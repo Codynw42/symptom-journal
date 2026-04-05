@@ -1,6 +1,7 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LogScreen from '../screens/LogScreen';
 import HistoryScreen from '../screens/HistoryScreen';
@@ -20,6 +21,8 @@ function TabIcon({ label }: { label: string }) {
 }
 
 export default function Navigation() {
+  const insets = useSafeAreaInsets();
+
   return (
     <NavigationContainer>
       <Tab.Navigator
@@ -28,10 +31,9 @@ export default function Navigation() {
           tabBarActiveTintColor: '#6C63FF',
           tabBarInactiveTintColor: '#999',
           tabBarStyle: {
-            paddingBottom: 8,
+            paddingBottom: insets.bottom || 8,
             paddingTop: 8,
-            height: 65,
-            elevation: 8, // android shadow
+            height: 65 + (insets.bottom || 0),
           },
           headerShown: true,
           headerStyle: { backgroundColor: '#6C63FF' },
