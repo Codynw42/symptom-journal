@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
+import { getStreak, StreakData } from '../lib/storage';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -86,7 +87,7 @@ const DUMMY_INSIGHTS: Insight[] = [
   },
 ];
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function confidenceColor(confidence: Insight['confidence']): string {
   return { high: '#4CAF50', medium: '#FFC107', low: '#90A4AE' }[confidence];
@@ -127,30 +128,10 @@ function WeeklyDigest({ summary }: { summary: WeeklySummary }) {
     <View style={styles.digestCard}>
       <Text style={styles.digestTitle}>📋 Weekly Digest</Text>
       <View style={styles.statRow}>
-        <StatCard
-          label="Pain"
-          value={summary.avgPain.toFixed(1)}
-          emoji="🤕"
-          color="#F44336"
-        />
-        <StatCard
-          label="Energy"
-          value={summary.avgEnergy.toFixed(1)}
-          emoji="⚡"
-          color="#FFC107"
-        />
-        <StatCard
-          label="Mood"
-          value={summary.avgMood.toFixed(1)}
-          emoji="😊"
-          color="#4CAF50"
-        />
-        <StatCard
-          label="Sleep"
-          value={`${summary.avgSleep.toFixed(1)}h`}
-          emoji="😴"
-          color="#6C63FF"
-        />
+        <StatCard label="Pain" value={summary.avgPain.toFixed(1)} emoji="🤕" color="#F44336" />
+        <StatCard label="Energy" value={summary.avgEnergy.toFixed(1)} emoji="⚡" color="#FFC107" />
+        <StatCard label="Mood" value={summary.avgMood.toFixed(1)} emoji="😊" color="#4CAF50" />
+        <StatCard label="Sleep" value={`${summary.avgSleep.toFixed(1)}h`} emoji="😴" color="#6C63FF" />
       </View>
       <Text style={styles.digestText}>{summary.digest}</Text>
     </View>
@@ -167,14 +148,11 @@ function InsightCard({ insight }: { insight: Insight }) {
       onPress={() => setExpanded((v) => !v)}
       activeOpacity={0.8}
     >
-      {/* Header */}
       <View style={styles.insightHeader}>
         <Text style={styles.trendIcon}>{trendIcon(insight.trend)}</Text>
         <Text style={styles.insightTitle}>{insight.title}</Text>
         <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
       </View>
-
-      {/* Variables */}
       <View style={styles.variableRow}>
         {insight.variables.map((v) => (
           <View key={v} style={styles.variableTag}>
@@ -187,8 +165,6 @@ function InsightCard({ insight }: { insight: Insight }) {
           </Text>
         </View>
       </View>
-
-      {/* Expanded */}
       {expanded && (
         <View style={styles.insightDetail}>
           <View style={styles.divider} />
@@ -199,14 +175,69 @@ function InsightCard({ insight }: { insight: Insight }) {
   );
 }
 
-function EmptyState({ onGenerate, loading }: { onGenerate: () => void; loading: boolean }) {
+function EmptyState() {
+  const [streak, setStreak] = useState<StreakData>({
+    currentStreak: 0,
+    lastLoggedDate: null,
+    longestStreak: 0,
+  });
+
+  useEffect(() => {
+    getStreak().then(setStreak);
+  }, []);
+
+  const DAYS_NEEDED = 7;
+  const progress = Math.min(streak.currentStreak / DAYS_NEEDED, 1);
+  const daysLeft = Math.max(DAYS_NEEDED - streak.currentStreak, 0);
+
+  function encouragementText(): string {
+    if (streak.currentStreak === 0) return 'Log today to get started!';
+    if (streak.currentStreak === 1) return 'Great start! Come back tomorrow.';
+    if (streak.currentStreak === 2) return 'Two days in. Building momentum 💪';
+    if (streak.currentStreak === 3) return 'Halfway there. Don\'t stop now!';
+    if (streak.currentStreak < 7) return `${daysLeft} more days — you're so close!`;
+    return 'You did it! Generating your insights now...';
+  }
+
   return (
     <View style={styles.emptyState}>
       <Text style={styles.emptyEmoji}>🧠</Text>
-      <Text style={styles.emptyTitle}>Not enough data yet</Text>
+      <Text style={styles.emptyTitle}>Insights are coming</Text>
       <Text style={styles.emptySubtitle}>
-        Log at least 7 days of entries and Claude will start finding patterns in your data.
+        Log every day and Claude will start finding patterns in your data.
       </Text>
+
+      <View style={emptyStyles.progressContainer}>
+        <View style={emptyStyles.progressHeader}>
+          <Text style={emptyStyles.progressLabel}>
+            🔥 {streak.currentStreak} / {DAYS_NEEDED} days logged
+          </Text>
+          <Text style={emptyStyles.progressDaysLeft}>
+            {daysLeft === 0 ? 'Ready!' : `${daysLeft} days to go`}
+          </Text>
+        </View>
+        <View style={emptyStyles.progressTrack}>
+          <View
+            style={[
+              emptyStyles.progressFill,
+              { width: `${progress * 100}%` },
+            ]}
+          />
+        </View>
+        <View style={emptyStyles.markerRow}>
+          {Array.from({ length: DAYS_NEEDED }).map((_, i) => (
+            <View
+              key={i}
+              style={[
+                emptyStyles.marker,
+                i < streak.currentStreak && emptyStyles.markerFilled,
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+
+      <Text style={emptyStyles.encouragement}>{encouragementText()}</Text>
     </View>
   );
 }
@@ -215,18 +246,15 @@ function EmptyState({ onGenerate, loading }: { onGenerate: () => void; loading: 
 
 export default function InsightsScreen() {
   const [loading, setLoading] = useState(false);
-  const [hasData] = useState(true); // flip to false to see empty state
+  const [hasData] = useState(false);
 
   function handleRefresh() {
-    // Claude API call will go here
     setLoading(true);
     setTimeout(() => setLoading(false), 2000);
   }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-
-      {/* Header */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.heading}>Your Insights</Text>
@@ -246,20 +274,17 @@ export default function InsightsScreen() {
       </View>
 
       {!hasData ? (
-        <EmptyState onGenerate={handleRefresh} loading={loading} />
+        <EmptyState />
       ) : (
         <>
           <WeeklyDigest summary={DUMMY_SUMMARY} />
-
           <Text style={styles.sectionHeader}>Patterns Detected</Text>
           <Text style={styles.sectionSubheader}>
             Tap any card to read the full finding
           </Text>
-
           {DUMMY_INSIGHTS.map((insight) => (
             <InsightCard key={insight.id} insight={insight} />
           ))}
-
           <View style={styles.footerNote}>
             <Text style={styles.footerNoteText}>
               🤖 Insights are generated by Claude AI based on your logged data.
@@ -274,7 +299,66 @@ export default function InsightsScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────────────
+
+const emptyStyles = StyleSheet.create({
+  progressContainer: {
+    width: '100%',
+    marginTop: 28,
+    marginBottom: 16,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  progressLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555',
+  },
+  progressDaysLeft: {
+    fontSize: 13,
+    color: '#6C63FF',
+    fontWeight: '600',
+  },
+  progressTrack: {
+    height: 10,
+    backgroundColor: '#EAE9FF',
+    borderRadius: 5,
+    overflow: 'hidden',
+    marginBottom: 10,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#6C63FF',
+    borderRadius: 5,
+  },
+  markerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  marker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EAE9FF',
+    borderWidth: 2,
+    borderColor: '#D0CEFF',
+  },
+  markerFilled: {
+    backgroundColor: '#6C63FF',
+    borderColor: '#6C63FF',
+  },
+  encouragement: {
+    fontSize: 14,
+    color: '#6C63FF',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -325,8 +409,6 @@ const styles = StyleSheet.create({
     color: '#aaa',
     marginBottom: 14,
   },
-
-  // Weekly digest
   digestCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -375,8 +457,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontStyle: 'italic',
   },
-
-  // Insight cards
   insightCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -447,12 +527,10 @@ const styles = StyleSheet.create({
     color: '#666',
     lineHeight: 20,
   },
-
-  // Empty state
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 30,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
   emptyEmoji: {
     fontSize: 48,
@@ -470,8 +548,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-
-  // Footer
   footerNote: {
     backgroundColor: '#EAE9FF',
     borderRadius: 12,

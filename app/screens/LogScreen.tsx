@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
+import { getStreak, recordLog, StreakData } from '../lib/storage';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +22,31 @@ interface LogEntry {
   notes: string;
   medications: string[];
   foodTags: string[];
+}
+
+// ─── Streak Banner ────────────────────────────────────────────────────────────
+
+function StreakBanner({ streak }: { streak: StreakData }) {
+  const { currentStreak, longestStreak } = streak;
+
+  return (
+    <View style={streakStyles.container}>
+      <View style={streakStyles.left}>
+        <Text style={streakStyles.fire}>🔥</Text>
+        <View>
+          <Text style={streakStyles.count}>
+            {currentStreak} day{currentStreak !== 1 ? 's' : ''}
+          </Text>
+          <Text style={streakStyles.label}>current streak</Text>
+        </View>
+      </View>
+      <View style={streakStyles.divider} />
+      <View style={streakStyles.right}>
+        <Text style={streakStyles.bestCount}>{longestStreak}</Text>
+        <Text style={streakStyles.label}>best streak</Text>
+      </View>
+    </View>
+  );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -131,6 +157,12 @@ export default function LogScreen() {
     day: 'numeric',
   });
 
+  const [streak, setStreak] = useState<StreakData>({
+    currentStreak: 0,
+    lastLoggedDate: null,
+    longestStreak: 0,
+  });
+
   const [entry, setEntry] = useState<LogEntry>({
     pain: 0,
     energy: 5,
@@ -141,6 +173,10 @@ export default function LogScreen() {
     medications: [],
     foodTags: [],
   });
+
+  useEffect(() => {
+    getStreak().then(setStreak);
+  }, []);
 
   function update<K extends keyof LogEntry>(key: K, value: LogEntry[K]) {
     setEntry((prev) => ({ ...prev, [key]: value }));
@@ -154,14 +190,26 @@ export default function LogScreen() {
     update(key, entry[key].filter((t) => t !== tag));
   }
 
-  function handleSubmit() {
-    // Supabase insert will go here later
+  async function handleSubmit() {
+    const updated = await recordLog();
+    setStreak(updated);
     console.log('Entry to save:', entry);
-    Alert.alert(
-      "Entry saved! ✓",
-      "Your symptoms have been logged for today.",
-      [{ text: "OK" }]
-    );
+
+    if (updated.currentStreak > 1) {
+      Alert.alert(
+        `${updated.currentStreak} day streak! 🔥`,
+        updated.currentStreak === 7
+          ? 'One week logged. Your first AI insights are ready in the Insights tab!'
+          : "You're on a roll. Keep it up.",
+        [{ text: "Let's go" }]
+      );
+    } else {
+      Alert.alert(
+        'Entry saved! ✓',
+        'Your symptoms have been logged for today.',
+        [{ text: 'OK' }]
+      );
+    }
   }
 
   return (
@@ -169,6 +217,9 @@ export default function LogScreen() {
 
       {/* Date */}
       <Text style={styles.dateText}>{today}</Text>
+
+      {/* Streak */}
+      <StreakBanner streak={streak} />
 
       {/* How are you feeling */}
       <SectionHeader title="How are you feeling?" />
@@ -250,7 +301,55 @@ export default function LogScreen() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const streakStyles = StyleSheet.create({
+  container: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  left: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  fire: {
+    fontSize: 28,
+  },
+  count: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FF7043',
+  },
+  label: {
+    fontSize: 11,
+    color: '#aaa',
+    marginTop: 1,
+  },
+  divider: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#f0f0f0',
+    marginHorizontal: 16,
+  },
+  right: {
+    alignItems: 'center',
+  },
+  bestCount: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#6C63FF',
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -264,7 +363,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#6C63FF',
-    marginBottom: 24,
+    marginBottom: 12,
   },
   sectionHeader: {
     fontSize: 16,
