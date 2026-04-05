@@ -6,91 +6,34 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { fetchEntries } from '../lib/db';
+import { generateInsights, InsightsResult, Insight } from '../lib/claude';
 import { getStreak, StreakData } from '../lib/storage';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Theme ────────────────────────────────────────────────────────────────────
 
-interface Insight {
-  id: string;
-  title: string;
-  description: string;
-  variables: string[];
-  confidence: 'high' | 'medium' | 'low';
-  trend: 'positive' | 'negative' | 'neutral';
-}
-
-interface WeeklySummary {
-  avgPain: number;
-  avgEnergy: number;
-  avgMood: number;
-  avgSleep: number;
-  digest: string;
-}
-
-// ─── Dummy Data ───────────────────────────────────────────────────────────────
-
-const DUMMY_SUMMARY: WeeklySummary = {
-  avgPain: 4.1,
-  avgEnergy: 5.7,
-  avgMood: 6.4,
-  avgSleep: 6.8,
-  digest:
-    'This week was mixed. Your best days followed nights with 8+ hours of sleep, and your worst days correlated with alcohol the night before. Energy was consistently low on Wednesdays — worth watching if that continues next week.',
+const C = {
+  bg:        '#0A1628',
+  bgCard:    '#111F35',
+  bgCardAlt: '#0F1A2E',
+  border:    '#1E3352',
+  navy:      '#1E3A5F',
+  teal:      '#4ECDC4',
+  coral:     '#FF6B6B',
+  amber:     '#FFA552',
+  mint:      '#6BCB77',
+  lavender:  '#A78BFA',
+  textWhite: '#F0F8FF',
+  textMid:   '#7A99B8',
+  textDim:   '#3D5A7A',
 };
 
-const DUMMY_INSIGHTS: Insight[] = [
-  {
-    id: '1',
-    title: 'Poor sleep is driving your pain scores',
-    description:
-      'On days following less than 6 hours of sleep, your pain scores average 6.8 — nearly double your baseline of 3.5 on well-rested days. This pattern has held across 9 of the last 14 days.',
-    variables: ['Sleep hours', 'Pain'],
-    confidence: 'high',
-    trend: 'negative',
-  },
-  {
-    id: '2',
-    title: 'Alcohol reliably tanks your mood the next day',
-    description:
-      'Every time you logged alcohol, your mood score the following day dropped by an average of 3.2 points. This has happened consistently across all 5 occurrences in the past 30 days.',
-    variables: ['Alcohol', 'Mood'],
-    confidence: 'high',
-    trend: 'negative',
-  },
-  {
-    id: '3',
-    title: 'Your energy is improving week over week',
-    description:
-      'Average energy this week is 5.7 compared to 4.1 last week — a 39% improvement. The change lines up with you logging more consistent sleep times.',
-    variables: ['Energy', 'Sleep quality'],
-    confidence: 'medium',
-    trend: 'positive',
-  },
-  {
-    id: '4',
-    title: 'Wednesday energy dip — possible pattern',
-    description:
-      'Your energy scores on Wednesdays have averaged 3.2 over the past 4 weeks, compared to your weekly average of 5.7. Only 4 data points so far — keep logging to confirm.',
-    variables: ['Energy', 'Day of week'],
-    confidence: 'low',
-    trend: 'negative',
-  },
-  {
-    id: '5',
-    title: 'Vitamin D correlates with better mood',
-    description:
-      'On days you logged Vitamin D, your mood averaged 7.1. On days without it, mood averaged 5.4. Correlation is promising but more data is needed to rule out confounding factors.',
-    variables: ['Vitamin D', 'Mood'],
-    confidence: 'medium',
-    trend: 'positive',
-  },
-];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function confidenceColor(confidence: Insight['confidence']): string {
-  return { high: '#4CAF50', medium: '#FFC107', low: '#90A4AE' }[confidence];
+  return { high: C.mint, medium: C.amber, low: C.textMid }[confidence];
 }
 
 function confidenceLabel(confidence: Insight['confidence']): string {
@@ -101,46 +44,64 @@ function trendIcon(trend: Insight['trend']): string {
   return { positive: '📈', negative: '📉', neutral: '➡️' }[trend];
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+function trendColor(trend: Insight['trend']): string {
+  return { positive: C.mint, negative: C.coral, neutral: C.textMid }[trend];
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({
-  label,
-  value,
-  emoji,
-  color,
+  emoji, label, value, color,
 }: {
+  emoji: string;
   label: string;
   value: string;
-  emoji: string;
   color: string;
 }) {
   return (
-    <View style={[styles.statCard, { borderTopColor: color }]}>
-      <Text style={styles.statEmoji}>{emoji}</Text>
-      <Text style={[styles.statValue, { color }]}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View style={[statStyles.card, { borderTopColor: color }]}>
+      <Text style={statStyles.emoji}>{emoji}</Text>
+      <Text style={[statStyles.value, { color }]}>{value}</Text>
+      <Text style={statStyles.label}>{label}</Text>
     </View>
   );
 }
 
-function WeeklyDigest({ summary }: { summary: WeeklySummary }) {
+// ─── Weekly Digest ────────────────────────────────────────────────────────────
+
+function WeeklyDigest({ result }: { result: InsightsResult }) {
   return (
     <View style={styles.digestCard}>
-      <Text style={styles.digestTitle}>📋 Weekly Digest</Text>
-      <View style={styles.statRow}>
-        <StatCard label="Pain" value={summary.avgPain.toFixed(1)} emoji="🤕" color="#F44336" />
-        <StatCard label="Energy" value={summary.avgEnergy.toFixed(1)} emoji="⚡" color="#FFC107" />
-        <StatCard label="Mood" value={summary.avgMood.toFixed(1)} emoji="😊" color="#4CAF50" />
-        <StatCard label="Sleep" value={`${summary.avgSleep.toFixed(1)}h`} emoji="😴" color="#6C63FF" />
+      <View style={styles.digestHeader}>
+        <View style={styles.digestIconBox}>
+          <Text style={styles.digestIcon}>📋</Text>
+        </View>
+        <View>
+          <Text style={styles.digestTitle}>Weekly Digest</Text>
+          <Text style={styles.digestSub}>Your past 7 days at a glance</Text>
+        </View>
       </View>
-      <Text style={styles.digestText}>{summary.digest}</Text>
+
+      <View style={styles.statRow}>
+        <StatCard emoji="🤕" label="Pain" value={result.avgPain.toFixed(1)} color={C.coral} />
+        <StatCard emoji="⚡" label="Energy" value={result.avgEnergy.toFixed(1)} color={C.amber} />
+        <StatCard emoji="😊" label="Mood" value={result.avgMood.toFixed(1)} color={C.mint} />
+        <StatCard emoji="😴" label="Sleep" value={`${result.avgSleep.toFixed(1)}h`} color={C.teal} />
+      </View>
+
+      <View style={styles.digestTextBox}>
+        <Text style={styles.digestText}>{result.digest}</Text>
+      </View>
     </View>
   );
 }
+
+// ─── Insight Card ─────────────────────────────────────────────────────────────
 
 function InsightCard({ insight }: { insight: Insight }) {
   const [expanded, setExpanded] = useState(false);
   const color = confidenceColor(insight.confidence);
+  const tc = trendColor(insight.trend);
 
   return (
     <TouchableOpacity
@@ -148,96 +109,114 @@ function InsightCard({ insight }: { insight: Insight }) {
       onPress={() => setExpanded((v) => !v)}
       activeOpacity={0.8}
     >
-      <View style={styles.insightHeader}>
-        <Text style={styles.trendIcon}>{trendIcon(insight.trend)}</Text>
-        <Text style={styles.insightTitle}>{insight.title}</Text>
-        <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
-      </View>
-      <View style={styles.variableRow}>
-        {insight.variables.map((v) => (
-          <View key={v} style={styles.variableTag}>
-            <Text style={styles.variableText}>{v}</Text>
+      <View style={[styles.insightBar, { backgroundColor: tc }]} />
+      <View style={styles.insightInner}>
+        <View style={styles.insightHeaderRow}>
+          <Text style={styles.insightTrendIcon}>{trendIcon(insight.trend)}</Text>
+          <Text style={styles.insightTitle}>{insight.title}</Text>
+          <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
+        </View>
+
+        <View style={styles.insightMeta}>
+          {insight.variables.map((v) => (
+            <View key={v} style={styles.varTag}>
+              <Text style={styles.varTagText}>{v}</Text>
+            </View>
+          ))}
+          <View style={[styles.confBadge, { backgroundColor: color + '20', borderColor: color + '50' }]}>
+            <Text style={[styles.confText, { color }]}>
+              {confidenceLabel(insight.confidence)}
+            </Text>
           </View>
-        ))}
-        <View style={[styles.confidenceBadge, { backgroundColor: color + '22' }]}>
-          <Text style={[styles.confidenceText, { color }]}>
-            {confidenceLabel(insight.confidence)}
-          </Text>
         </View>
+
+        {expanded && (
+          <View style={styles.insightDetail}>
+            <View style={styles.detailDivider} />
+            <Text style={styles.insightDesc}>{insight.description}</Text>
+          </View>
+        )}
       </View>
-      {expanded && (
-        <View style={styles.insightDetail}>
-          <View style={styles.divider} />
-          <Text style={styles.insightDescription}>{insight.description}</Text>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
-function EmptyState() {
-  const [streak, setStreak] = useState<StreakData>({
-    currentStreak: 0,
-    lastLoggedDate: null,
-    longestStreak: 0,
-  });
+// ─── Progress / Empty State ───────────────────────────────────────────────────
 
-  useEffect(() => {
-    getStreak().then(setStreak);
-  }, []);
-
+function ProgressState({ streak }: { streak: StreakData }) {
   const DAYS_NEEDED = 7;
   const progress = Math.min(streak.currentStreak / DAYS_NEEDED, 1);
   const daysLeft = Math.max(DAYS_NEEDED - streak.currentStreak, 0);
 
-  function encouragementText(): string {
+  function encouragement(): string {
     if (streak.currentStreak === 0) return 'Log today to get started!';
     if (streak.currentStreak === 1) return 'Great start! Come back tomorrow.';
     if (streak.currentStreak === 2) return 'Two days in. Building momentum 💪';
     if (streak.currentStreak === 3) return 'Halfway there. Don\'t stop now!';
-    if (streak.currentStreak < 7) return `${daysLeft} more days — you're so close!`;
-    return 'You did it! Generating your insights now...';
+    if (streak.currentStreak < 7) return `${daysLeft} more days — you\'re so close!`;
+    return 'Generating your first insights...';
   }
 
   return (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyEmoji}>🧠</Text>
-      <Text style={styles.emptyTitle}>Insights are coming</Text>
-      <Text style={styles.emptySubtitle}>
-        Log every day and Claude will start finding patterns in your data.
-      </Text>
-
-      <View style={emptyStyles.progressContainer}>
-        <View style={emptyStyles.progressHeader}>
-          <Text style={emptyStyles.progressLabel}>
-            🔥 {streak.currentStreak} / {DAYS_NEEDED} days logged
-          </Text>
-          <Text style={emptyStyles.progressDaysLeft}>
-            {daysLeft === 0 ? 'Ready!' : `${daysLeft} days to go`}
-          </Text>
-        </View>
-        <View style={emptyStyles.progressTrack}>
-          <View
-            style={[
-              emptyStyles.progressFill,
-              { width: `${progress * 100}%` },
-            ]}
-          />
-        </View>
-        <View style={emptyStyles.markerRow}>
-          {Array.from({ length: DAYS_NEEDED }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                emptyStyles.marker,
-                i < streak.currentStreak && emptyStyles.markerFilled,
-              ]}
-            />
-          ))}
-        </View>
+    <View style={styles.progressOuter}>
+      {/* Hero */}
+      <View style={styles.progressHero}>
+        <View style={styles.progressBlobBig} />
+        <View style={styles.progressBlobSmall} />
+        <Text style={styles.progressEmoji}>🧠</Text>
+        <Text style={styles.progressTitle}>Insights are coming</Text>
+        <Text style={styles.progressSub}>
+          Log every day and Claude will find patterns in your data that you'd never notice yourself.
+        </Text>
       </View>
 
-      <Text style={emptyStyles.encouragement}>{encouragementText()}</Text>
+      {/* Progress card */}
+      <View style={styles.progressCard}>
+        <View style={styles.progressLabelRow}>
+          <Text style={styles.progressLabel}>
+            🔥 {streak.currentStreak} / {DAYS_NEEDED} days logged
+          </Text>
+          <Text style={styles.progressDaysLeft}>
+            {daysLeft === 0 ? 'Ready!' : `${daysLeft} to go`}
+          </Text>
+        </View>
+
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+        </View>
+
+        <View style={styles.markerRow}>
+          {Array.from({ length: DAYS_NEEDED }).map((_, i) => (
+            <View key={i} style={styles.markerWrap}>
+              <View style={[
+                styles.marker,
+                i < streak.currentStreak && styles.markerFilled,
+              ]} />
+              {i < streak.currentStreak && (
+                <Text style={styles.markerCheck}>✓</Text>
+              )}
+            </View>
+          ))}
+        </View>
+
+        <Text style={styles.encouragement}>{encouragement()}</Text>
+      </View>
+
+      {/* What to expect */}
+      <View style={styles.expectCard}>
+        <Text style={styles.expectTitle}>What Claude will find</Text>
+        {[
+          { icon: '🔗', text: 'Correlations between sleep and pain scores' },
+          { icon: '⏱️', text: 'Lagged effects — did food on Monday affect Tuesday?' },
+          { icon: '📅', text: 'Weekly cycles and patterns in your data' },
+          { icon: '💊', text: 'Which medications correlate with better days' },
+        ].map((item, i) => (
+          <View key={i} style={styles.expectRow}>
+            <Text style={styles.expectIcon}>{item.icon}</Text>
+            <Text style={styles.expectText}>{item.text}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -245,129 +224,190 @@ function EmptyState() {
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function InsightsScreen() {
-  const [loading, setLoading] = useState(false);
-  const [hasData] = useState(false);
+  const [entries, setEntries] = useState<any[]>([]);
+  const [result, setResult] = useState<InsightsResult | null>(null);
+  const [streak, setStreak] = useState<StreakData>({ currentStreak: 0, lastLoggedDate: null, longestStreak: 0 });
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleRefresh() {
-    setLoading(true);
-    setTimeout(() => setLoading(false), 2000);
+  const hasEnoughData = entries.length >= 7;
+
+  async function loadData() {
+    try {
+      const [fetchedEntries, fetchedStreak] = await Promise.all([
+        fetchEntries(),
+        getStreak(),
+      ]);
+      setEntries(fetchedEntries);
+      setStreak(fetchedStreak);
+    } catch (e) {
+      console.error('Failed to load data:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  async function handleGenerate() {
+    if (!hasEnoughData || generating) return;
+    setGenerating(true);
+    setError(null);
+
+    try {
+      const insights = await generateInsights(entries.slice(0, 30));
+      setResult(insights);
+      setLastUpdated(new Date().toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+      }));
+    } catch (e: any) {
+      setError('Could not generate insights. Check your connection and try again.');
+      console.error('Claude API error:', e);
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadData();
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (hasEnoughData && !result) {
+      handleGenerate();
+    }
+  }, [entries]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingState}>
+        <ActivityIndicator color={C.teal} size="large" />
+        <Text style={styles.loadingText}>Loading your data...</Text>
+      </View>
+    );
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={styles.heading}>Your Insights</Text>
-          <Text style={styles.subheading}>Last updated today</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={handleRefresh}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.refreshText}>↻ Refresh</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {!hasData ? (
-        <EmptyState />
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={C.teal}
+        />
+      }
+    >
+      {!hasEnoughData ? (
+        <ProgressState streak={streak} />
       ) : (
         <>
-          <WeeklyDigest summary={DUMMY_SUMMARY} />
-          <Text style={styles.sectionHeader}>Patterns Detected</Text>
-          <Text style={styles.sectionSubheader}>
-            Tap any card to read the full finding
-          </Text>
-          {DUMMY_INSIGHTS.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} />
-          ))}
-          <View style={styles.footerNote}>
-            <Text style={styles.footerNoteText}>
-              🤖 Insights are generated by Claude AI based on your logged data.
-              Always consult a healthcare professional before making medical decisions.
-            </Text>
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <View>
+              <Text style={styles.heading}>AI Insights</Text>
+              {lastUpdated && (
+                <Text style={styles.subheading}>Updated {lastUpdated}</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[styles.refreshBtn, generating && styles.refreshBtnDisabled]}
+              onPress={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? (
+                <ActivityIndicator size="small" color={C.bg} />
+              ) : (
+                <Text style={styles.refreshBtnText}>↻ Refresh</Text>
+              )}
+            </TouchableOpacity>
           </View>
+
+          {/* Generating state */}
+          {generating && (
+            <View style={styles.generatingCard}>
+              <ActivityIndicator color={C.teal} />
+              <View>
+                <Text style={styles.generatingTitle}>Claude is analyzing your data</Text>
+                <Text style={styles.generatingSub}>Looking for patterns across {entries.length} entries...</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorText}>⚠️ {error}</Text>
+            </View>
+          )}
+
+          {/* Results */}
+          {result && !generating && (
+            <>
+              <WeeklyDigest result={result} />
+
+              <Text style={styles.sectionHeader}>Patterns Detected</Text>
+              <Text style={styles.sectionSub}>
+                Tap any card to read the full finding
+              </Text>
+
+              {result.insights.map((insight, i) => (
+                <InsightCard key={i} insight={insight} />
+              ))}
+
+              <View style={styles.disclaimer}>
+                <Text style={styles.disclaimerText}>
+                  🤖 Insights generated by Claude AI. Always consult a healthcare professional before making medical decisions.
+                </Text>
+              </View>
+            </>
+          )}
         </>
       )}
-
       <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
-const emptyStyles = StyleSheet.create({
-  progressContainer: {
-    width: '100%',
-    marginTop: 28,
-    marginBottom: 16,
+const statStyles = StyleSheet.create({
+  card: {
+    flex: 1,
+    backgroundColor: C.bgCardAlt,
+    borderRadius: 12,
+    padding: 10,
+    alignItems: 'center',
+    borderTopWidth: 2,
+    marginHorizontal: 3,
   },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  progressLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#555',
-  },
-  progressDaysLeft: {
-    fontSize: 13,
-    color: '#6C63FF',
-    fontWeight: '600',
-  },
-  progressTrack: {
-    height: 10,
-    backgroundColor: '#EAE9FF',
-    borderRadius: 5,
-    overflow: 'hidden',
-    marginBottom: 10,
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#6C63FF',
-    borderRadius: 5,
-  },
-  markerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 2,
-  },
-  marker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EAE9FF',
-    borderWidth: 2,
-    borderColor: '#D0CEFF',
-  },
-  markerFilled: {
-    backgroundColor: '#6C63FF',
-    borderColor: '#6C63FF',
-  },
-  encouragement: {
-    fontSize: 14,
-    color: '#6C63FF',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 8,
-  },
+  emoji: { fontSize: 16, marginBottom: 4 },
+  value: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  label: { fontSize: 10, color: C.textDim, fontWeight: '500', marginTop: 2 },
 });
 
 const styles = StyleSheet.create({
-  container: {
+  root: { flex: 1, backgroundColor: C.bg },
+  content: { padding: 16, paddingTop: 12 },
+  loadingState: {
     flex: 1,
-    backgroundColor: '#F7F7FB',
+    backgroundColor: C.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  content: {
-    padding: 20,
-  },
+  loadingText: { color: C.textMid, fontSize: 14, fontWeight: '500' },
+
+  // Header
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -375,188 +415,289 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   heading: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#333',
+    fontSize: 24,
+    fontWeight: '800',
+    color: C.textWhite,
+    letterSpacing: -0.8,
   },
-  subheading: {
-    fontSize: 12,
-    color: '#aaa',
-    marginTop: 2,
-  },
-  refreshButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 10,
+  subheading: { fontSize: 11, color: C.textDim, marginTop: 3, fontWeight: '500' },
+  refreshBtn: {
+    backgroundColor: C.teal,
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
     minWidth: 90,
     alignItems: 'center',
   },
-  refreshText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-    marginTop: 28,
-    marginBottom: 4,
-  },
-  sectionSubheader: {
-    fontSize: 12,
-    color: '#aaa',
-    marginBottom: 14,
-  },
-  digestCard: {
-    backgroundColor: '#fff',
+  refreshBtnDisabled: { opacity: 0.6 },
+  refreshBtnText: { color: C.bg, fontWeight: '800', fontSize: 13 },
+
+  // Generating
+  generatingCard: {
+    backgroundColor: C.bgCard,
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  digestTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 14,
-  },
-  statRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: C.teal + '40',
     marginBottom: 16,
   },
-  statCard: {
-    flex: 1,
+  generatingTitle: { fontSize: 14, fontWeight: '700', color: C.textWhite },
+  generatingSub: { fontSize: 12, color: C.textDim, marginTop: 2 },
+
+  // Error
+  errorCard: {
+    backgroundColor: C.coral + '15',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.coral + '40',
+    marginBottom: 16,
+  },
+  errorText: { color: C.coral, fontSize: 13, fontWeight: '600' },
+
+  // Digest card
+  digestCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 8,
+  },
+  digestHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 3,
-    paddingTop: 10,
-    marginHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: '#FAFAFA',
+    gap: 10,
+    marginBottom: 16,
   },
-  statEmoji: {
-    fontSize: 18,
-    marginBottom: 4,
+  digestIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: C.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#aaa',
-    marginTop: 2,
+  digestIcon: { fontSize: 18 },
+  digestTitle: { fontSize: 16, fontWeight: '700', color: C.textWhite },
+  digestSub: { fontSize: 11, color: C.textDim, marginTop: 1 },
+  statRow: { flexDirection: 'row', marginBottom: 14 },
+  digestTextBox: {
+    backgroundColor: C.bgCardAlt,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   digestText: {
     fontSize: 13,
-    color: '#666',
+    color: C.textMid,
     lineHeight: 20,
     fontStyle: 'italic',
   },
-  insightCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+
+  // Section
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.textWhite,
+    letterSpacing: -0.5,
+    marginTop: 24,
+    marginBottom: 4,
   },
-  insightHeader: {
+  sectionSub: { fontSize: 11, color: C.textDim, fontWeight: '500', marginBottom: 14 },
+
+  // Insight card
+  insightCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  insightBar: { width: 3 },
+  insightInner: { flex: 1, padding: 14 },
+  insightHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
     marginBottom: 10,
   },
-  trendIcon: {
-    fontSize: 18,
-    marginTop: 1,
-  },
+  insightTrendIcon: { fontSize: 16, marginTop: 1 },
   insightTitle: {
     flex: 1,
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    lineHeight: 20,
-  },
-  chevron: {
-    fontSize: 11,
-    color: '#aaa',
-    marginTop: 3,
-  },
-  variableRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  variableTag: {
-    backgroundColor: '#EAE9FF',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  variableText: {
-    color: '#6C63FF',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  confidenceBadge: {
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  confidenceText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  insightDetail: {
-    marginTop: 12,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#f0f0f0',
-    marginBottom: 12,
-  },
-  insightDescription: {
-    fontSize: 13,
-    color: '#666',
-    lineHeight: 20,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-  },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
     fontWeight: '700',
-    color: '#333',
-    marginBottom: 10,
+    color: C.textWhite,
+    lineHeight: 20,
+    letterSpacing: -0.2,
   },
-  emptySubtitle: {
-    fontSize: 14,
-    color: '#aaa',
-    textAlign: 'center',
-    lineHeight: 22,
+  chevron: { fontSize: 10, color: C.textDim, marginTop: 3 },
+  insightMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  varTag: {
+    backgroundColor: C.navy,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  footerNote: {
-    backgroundColor: '#EAE9FF',
-    borderRadius: 12,
+  varTagText: { color: C.textMid, fontSize: 11, fontWeight: '600' },
+  confBadge: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  confText: { fontSize: 11, fontWeight: '600' },
+  insightDetail: { marginTop: 12 },
+  detailDivider: { height: 1, backgroundColor: C.border, marginBottom: 10 },
+  insightDesc: {
+    fontSize: 13,
+    color: C.textMid,
+    lineHeight: 20,
+  },
+
+  // Disclaimer
+  disclaimer: {
+    backgroundColor: C.navy,
+    borderRadius: 14,
     padding: 14,
     marginTop: 8,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  footerNoteText: {
+  disclaimerText: { fontSize: 11, color: C.textDim, lineHeight: 17 },
+
+  // Progress / empty state
+  progressOuter: { gap: 14 },
+  progressHero: {
+    backgroundColor: C.navy,
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  progressBlobBig: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: C.teal,
+    opacity: 0.06,
+    top: -60,
+    right: -40,
+  },
+  progressBlobSmall: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: C.lavender,
+    opacity: 0.08,
+    bottom: -20,
+    left: 20,
+  },
+  progressEmoji: { fontSize: 48, marginBottom: 12 },
+  progressTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: C.textWhite,
+    letterSpacing: -0.8,
+    marginBottom: 8,
+  },
+  progressSub: {
+    fontSize: 13,
+    color: C.textDim,
+    textAlign: 'center',
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  progressCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  progressLabelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  progressLabel: { fontSize: 13, fontWeight: '700', color: C.textWhite },
+  progressDaysLeft: { fontSize: 13, color: C.teal, fontWeight: '700' },
+  progressTrack: {
+    height: 8,
+    backgroundColor: C.border,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.teal,
+    borderRadius: 4,
+  },
+  markerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  markerWrap: { alignItems: 'center', justifyContent: 'center' },
+  marker: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: C.bgCardAlt,
+    borderWidth: 1.5,
+    borderColor: C.border,
+  },
+  markerFilled: {
+    backgroundColor: C.teal + '25',
+    borderColor: C.teal,
+  },
+  markerCheck: {
+    position: 'absolute',
     fontSize: 12,
-    color: '#6C63FF',
-    lineHeight: 18,
+    color: C.teal,
+    fontWeight: '800',
   },
+  encouragement: {
+    fontSize: 13,
+    color: C.teal,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  expectCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 12,
+  },
+  expectTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.textWhite,
+    marginBottom: 4,
+  },
+  expectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  expectIcon: { fontSize: 18, width: 28 },
+  expectText: { fontSize: 13, color: C.textMid, fontWeight: '500', flex: 1, lineHeight: 18 },
 });
