@@ -1,3 +1,5 @@
+import { account } from '../lib/appwrite';
+import { ID } from '../lib/appwrite';
 import { useState } from 'react';
 import {
   View,
@@ -80,26 +82,27 @@ export default function AuthScreen({ onLogin }: { onLogin: () => void }) {
   }
 
   async function handleSubmit() {
-    if (!validate()) return;
-    setLoading(true);
+  if (!validate()) return;
+  setLoading(true);
 
-    try {
-      // Supabase auth calls will go here
-      // For now just simulate a delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      onLogin();
-      Alert.alert(
-        mode === 'login' ? 'Logged in!' : 'Account created!',
-        mode === 'signup'
-          ? 'Check your email to confirm your account.'
-          : 'Welcome back.'
-      );
-    } catch (error: any) {
-      Alert.alert('Error', error.message ?? 'Something went wrong.');
-    } finally {
-      setLoading(false);
+  try {
+    if (mode === 'signup') {
+      await account.create(ID.unique(), email, password);
     }
+    await account.createEmailPasswordSession({
+      email,
+      password,
+    });
+    onLogin();
+  } catch (error: any) {
+    Alert.alert(
+      'Error',
+      error.message ?? 'Something went wrong. Please try again.'
+    );
+  } finally {
+    setLoading(false);
   }
+}
 
   function toggleMode() {
     setMode((m) => (m === 'login' ? 'signup' : 'login'));
