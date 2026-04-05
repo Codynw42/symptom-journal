@@ -182,13 +182,19 @@ export default function Navigation() {
           headerShadowVisible: false,
         }}
       >
-        <Tab.Screen name="Log" component={LogScreen} options={{ title: 'Daily Log' }} />
-        <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
-        <Tab.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI Insights' }} />
-        <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
-      </Tab.Navigator>
-    </NavigationContainer>
-  );
+              <Tab.Screen name="Log" component={LogScreen} options={{ title: 'Daily Log' }} />
+      <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
+      <Tab.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI Insights' }} />
+      
+      <Tab.Screen
+        name="Profile"
+        options={{ title: 'Profile' }}
+      >
+        {() => <ProfileScreen onSignOut={() => setIsLoggedIn(false)} />}
+      </Tab.Screen>
+    </Tab.Navigator>
+  </NavigationContainer>
+);
 }
 
 // ─── Icon Styles ──────────────────────────────────────────────────────────────
