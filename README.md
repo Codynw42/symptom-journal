@@ -3,7 +3,7 @@
   
   <h1>🌌 Biopunk Observatory</h1>
   <h2><strong>Symptom Journal</strong></h2>
-  <p><em>Deep space navy. Floating biological geometry. Pulse rings. Molecular nodes. Heartbeat wave.</em></p>
+  <p><em></em></p>
   
   <p><strong>Track the signals.<br>Decode the patterns.<br>Command your biology.</strong></p>
   
