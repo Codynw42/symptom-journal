@@ -1,17 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
+import { fetchEntries } from '../lib/db';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const C = {
+  bg:        '#0A1628',
+  bgCard:    '#111F35',
+  bgCardAlt: '#0F1A2E',
+  border:    '#1E3352',
+  navy:      '#1E3A5F',
+  teal:      '#4ECDC4',
+  coral:     '#FF6B6B',
+  amber:     '#FFA552',
+  mint:      '#6BCB77',
+  lavender:  '#A78BFA',
+  textWhite: '#F0F8FF',
+  textMid:   '#7A99B8',
+  textDim:   '#3D5A7A',
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Entry {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   pain: number;
   energy: number;
   mood: number;
@@ -22,110 +43,18 @@ interface Entry {
   foodTags: string[];
 }
 
-// ─── Dummy Data ───────────────────────────────────────────────────────────────
-
-const DUMMY_ENTRIES: Entry[] = [
-  {
-    id: '1',
-    date: '2026-04-05',
-    pain: 3,
-    energy: 7,
-    mood: 8,
-    sleepHrs: 7.5,
-    sleepQuality: 8,
-    notes: 'Felt pretty good today. Went for a walk.',
-    medications: ['Vitamin D'],
-    foodTags: ['coffee', 'salad'],
-  },
-  {
-    id: '2',
-    date: '2026-04-04',
-    pain: 6,
-    energy: 4,
-    mood: 5,
-    sleepHrs: 5,
-    sleepQuality: 4,
-    notes: 'Bad night sleep. Headache most of the day.',
-    medications: ['Ibuprofen', 'Vitamin D'],
-    foodTags: ['coffee', 'alcohol', 'pizza'],
-  },
-  {
-    id: '3',
-    date: '2026-04-03',
-    pain: 2,
-    energy: 8,
-    mood: 9,
-    sleepHrs: 8,
-    sleepQuality: 9,
-    notes: 'Great day. Full night of sleep made a huge difference.',
-    medications: ['Vitamin D'],
-    foodTags: ['water', 'salad', 'fruit'],
-  },
-  {
-    id: '4',
-    date: '2026-04-02',
-    pain: 5,
-    energy: 5,
-    mood: 6,
-    sleepHrs: 6,
-    sleepQuality: 5,
-    notes: '',
-    medications: [],
-    foodTags: ['coffee', 'fast food'],
-  },
-  {
-    id: '5',
-    date: '2026-04-01',
-    pain: 7,
-    energy: 3,
-    mood: 4,
-    sleepHrs: 4.5,
-    sleepQuality: 3,
-    notes: 'Rough day. Pain was bad in the morning.',
-    medications: ['Ibuprofen'],
-    foodTags: ['alcohol', 'coffee'],
-  },
-  {
-    id: '6',
-    date: '2026-03-31',
-    pain: 1,
-    energy: 9,
-    mood: 9,
-    sleepHrs: 9,
-    sleepQuality: 9,
-    notes: 'Best day in weeks.',
-    medications: ['Vitamin D'],
-    foodTags: ['water', 'fruit', 'vegetables'],
-  },
-  {
-    id: '7',
-    date: '2026-03-30',
-    pain: 4,
-    energy: 6,
-    mood: 7,
-    sleepHrs: 7,
-    sleepQuality: 7,
-    notes: '',
-    medications: ['Vitamin D'],
-    foodTags: ['coffee'],
-  },
-];
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Overall wellness score — higher pain is bad, higher energy/mood is good
 function wellnessScore(entry: Entry): number {
-  return Math.round(
-    ((10 - entry.pain) + entry.energy + entry.mood) / 3
-  );
+  return Math.round(((10 - entry.pain) + entry.energy + entry.mood) / 3);
 }
 
 function scoreToColor(score: number): string {
-  if (score >= 8) return '#4CAF50'; // green
-  if (score >= 6) return '#8BC34A'; // light green
-  if (score >= 4) return '#FFC107'; // amber
-  if (score >= 2) return '#FF7043'; // orange
-  return '#F44336';                 // red
+  if (score >= 8) return C.mint;
+  if (score >= 6) return C.teal;
+  if (score >= 4) return C.amber;
+  if (score >= 2) return C.coral;
+  return '#F44336';
 }
 
 function formatDisplayDate(dateStr: string): string {
@@ -137,69 +66,97 @@ function formatDisplayDate(dateStr: string): string {
   });
 }
 
+function getLastNDays(n: number): string[] {
+  const days = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+  return days;
+}
+
 // ─── Calendar Heatmap ────────────────────────────────────────────────────────
 
 function CalendarHeatmap({ entries }: { entries: Entry[] }) {
-  const entryMap = Object.fromEntries(
-    entries.map((e) => [e.date, e])
-  );
-
-  // Build last 35 days (5 weeks)
-  const days: (Entry | null)[] = [];
-  for (let i = 34; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().split('T')[0];
-    days.push(entryMap[key] ?? null);
-  }
-
+  const entryMap = Object.fromEntries(entries.map((e) => [e.date, e]));
+  const days = getLastNDays(35);
   const weeks: (Entry | null)[][] = [];
+
   for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7));
+    weeks.push(
+      days.slice(i, i + 7).map((d) => entryMap[d] ?? null)
+    );
   }
 
   const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const totalLogged = entries.length;
+  const avgWellness = entries.length
+    ? Math.round(entries.reduce((sum, e) => sum + wellnessScore(e), 0) / entries.length)
+    : 0;
 
   return (
-    <View style={styles.heatmapContainer}>
-      <Text style={styles.heatmapTitle}>Last 5 Weeks</Text>
+    <View style={heatStyles.card}>
+      {/* Header */}
+      <View style={heatStyles.headerRow}>
+        <View>
+          <Text style={heatStyles.title}>Last 5 Weeks</Text>
+          <Text style={heatStyles.subtitle}>Your wellness at a glance</Text>
+        </View>
+        <View style={heatStyles.statsRow}>
+          <View style={heatStyles.statBox}>
+            <Text style={[heatStyles.statNum, { color: C.teal }]}>{totalLogged}</Text>
+            <Text style={heatStyles.statLabel}>logged</Text>
+          </View>
+          <View style={heatStyles.statBox}>
+            <Text style={[heatStyles.statNum, { color: scoreToColor(avgWellness) }]}>
+              {avgWellness}
+            </Text>
+            <Text style={heatStyles.statLabel}>avg score</Text>
+          </View>
+        </View>
+      </View>
 
       {/* Day labels */}
-      <View style={styles.heatmapRow}>
+      <View style={heatStyles.row}>
         {dayLabels.map((d, i) => (
-          <Text key={i} style={styles.dayLabel}>{d}</Text>
+          <Text key={i} style={heatStyles.dayLabel}>{d}</Text>
         ))}
       </View>
 
       {/* Weeks */}
       {weeks.map((week, wi) => (
-        <View key={wi} style={styles.heatmapRow}>
+        <View key={wi} style={heatStyles.row}>
           {week.map((entry, di) => {
             const score = entry ? wellnessScore(entry) : null;
+            const color = score !== null ? scoreToColor(score) : null;
             return (
               <View
                 key={di}
                 style={[
-                  styles.heatmapCell,
+                  heatStyles.cell,
                   {
-                    backgroundColor: score !== null
-                      ? scoreToColor(score)
-                      : '#EBEBEB',
+                    backgroundColor: color ? color + '30' : C.bgCardAlt,
+                    borderColor: color ? color + '60' : C.border,
                   },
                 ]}
-              />
+              >
+                {color && (
+                  <View style={[heatStyles.cellDot, { backgroundColor: color }]} />
+                )}
+              </View>
             );
           })}
         </View>
       ))}
 
       {/* Legend */}
-      <View style={styles.legendRow}>
-        <Text style={styles.legendLabel}>Worse</Text>
-        {['#F44336', '#FF7043', '#FFC107', '#8BC34A', '#4CAF50'].map((c) => (
-          <View key={c} style={[styles.legendCell, { backgroundColor: c }]} />
+      <View style={heatStyles.legendRow}>
+        <Text style={heatStyles.legendLabel}>Worse</Text>
+        {['#F44336', C.coral, C.amber, C.teal, C.mint].map((c) => (
+          <View key={c} style={[heatStyles.legendCell, { backgroundColor: c + '60', borderColor: c }]} />
         ))}
-        <Text style={styles.legendLabel}>Better</Text>
+        <Text style={heatStyles.legendLabel}>Better</Text>
       </View>
     </View>
   );
@@ -218,77 +175,157 @@ function EntryCard({ entry }: { entry: Entry }) {
       onPress={() => setExpanded((v) => !v)}
       activeOpacity={0.8}
     >
-      {/* Card Header */}
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderLeft}>
-          <View style={[styles.scoreCircle, { backgroundColor: color }]}>
-            <Text style={styles.scoreText}>{score}</Text>
+      {/* Left color bar */}
+      <View style={[styles.cardBar, { backgroundColor: color }]} />
+
+      <View style={styles.cardInner}>
+        {/* Header row */}
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardHeaderLeft}>
+            <View style={[styles.scoreBadge, { backgroundColor: color + '25', borderColor: color + '60' }]}>
+              <Text style={[styles.scoreNum, { color }]}>{score}</Text>
+            </View>
+            <View>
+              <Text style={styles.cardDate}>{formatDisplayDate(entry.date)}</Text>
+              <Text style={styles.cardSubdate}>Wellness score {score}/10</Text>
+            </View>
           </View>
-          <Text style={styles.cardDate}>{formatDisplayDate(entry.date)}</Text>
+          <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
         </View>
-        <View style={styles.cardStats}>
-          <Text style={styles.cardStat}>🤕 {entry.pain}</Text>
-          <Text style={styles.cardStat}>⚡ {entry.energy}</Text>
-          <Text style={styles.cardStat}>😊 {entry.mood}</Text>
+
+        {/* Metric pills */}
+        <View style={styles.metricPills}>
+          <View style={[styles.metricPill, { backgroundColor: C.coral + '20' }]}>
+            <Text style={styles.metricPillText}>🤕 {entry.pain}</Text>
+          </View>
+          <View style={[styles.metricPill, { backgroundColor: C.amber + '20' }]}>
+            <Text style={styles.metricPillText}>⚡ {entry.energy}</Text>
+          </View>
+          <View style={[styles.metricPill, { backgroundColor: C.mint + '20' }]}>
+            <Text style={styles.metricPillText}>😊 {entry.mood}</Text>
+          </View>
+          <View style={[styles.metricPill, { backgroundColor: C.teal + '20' }]}>
+            <Text style={styles.metricPillText}>😴 {entry.sleepHrs}h</Text>
+          </View>
         </View>
-        <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
+
+        {/* Expanded detail */}
+        {expanded && (
+          <View style={styles.detail}>
+            <View style={styles.detailDivider} />
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Sleep quality</Text>
+              <Text style={styles.detailValue}>{entry.sleepQuality}/10</Text>
+            </View>
+
+            {entry.medications.length > 0 && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Medications</Text>
+                <Text style={styles.detailValue}>
+                  {entry.medications.join(', ')}
+                </Text>
+              </View>
+            )}
+
+            {entry.foodTags.length > 0 && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Food & drink</Text>
+                <Text style={styles.detailValue}>
+                  {entry.foodTags.join(', ')}
+                </Text>
+              </View>
+            )}
+
+            {entry.notes ? (
+              <View style={styles.notesBox}>
+                <Text style={styles.notesQuote}>📓</Text>
+                <Text style={styles.notesText}>{entry.notes}</Text>
+              </View>
+            ) : null}
+          </View>
+        )}
       </View>
-
-      {/* Expanded Detail */}
-      {expanded && (
-        <View style={styles.cardDetail}>
-          <View style={styles.divider} />
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Sleep</Text>
-            <Text style={styles.detailValue}>
-              {entry.sleepHrs}hrs · Quality {entry.sleepQuality}/10
-            </Text>
-          </View>
-
-          {entry.medications.length > 0 && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Medications</Text>
-              <Text style={styles.detailValue}>
-                {entry.medications.join(', ')}
-              </Text>
-            </View>
-          )}
-
-          {entry.foodTags.length > 0 && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Food & drink</Text>
-              <Text style={styles.detailValue}>
-                {entry.foodTags.join(', ')}
-              </Text>
-            </View>
-          )}
-
-          {entry.notes ? (
-            <View style={styles.notesBox}>
-              <Text style={styles.notesText}>"{entry.notes}"</Text>
-            </View>
-          ) : null}
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─── Empty State ─────────────────────────────────────────────────────────────
+
+function EmptyState() {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyEmoji}>📅</Text>
+      <Text style={styles.emptyTitle}>No entries yet</Text>
+      <Text style={styles.emptySubtitle}>
+        Head to the Log tab and save your first entry. It'll show up here.
+      </Text>
+    </View>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function HistoryScreen() {
-  const sorted = [...DUMMY_ENTRIES].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function loadEntries() {
+    try {
+      const data = await fetchEntries();
+      setEntries(data);
+    } catch (error) {
+      console.error('Failed to load entries:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    loadEntries();
+  }, []);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadEntries();
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.loadingState}>
+        <ActivityIndicator color={C.teal} size="large" />
+        <Text style={styles.loadingText}>Loading your history...</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <CalendarHeatmap entries={DUMMY_ENTRIES} />
-      <Text style={styles.sectionHeader}>Past Entries</Text>
-      {sorted.map((entry) => (
-        <EntryCard key={entry.id} entry={entry} />
-      ))}
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={C.teal}
+        />
+      }
+    >
+      {entries.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <>
+          <CalendarHeatmap entries={entries} />
+          <Text style={styles.sectionHeader}>Past Entries</Text>
+          <Text style={styles.sectionSub}>Pull down to refresh · Tap to expand</Text>
+          {entries.map((entry) => (
+            <EntryCard key={entry.id} entry={entry} />
+          ))}
+        </>
+      )}
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -296,39 +333,52 @@ export default function HistoryScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F7FB',
+const heatStyles = StyleSheet.create({
+  card: {
+    backgroundColor: C.bgCard,
+    borderRadius: 20,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 8,
   },
-  content: {
-    padding: 20,
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
   },
-  sectionHeader: {
+  title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
-    marginTop: 28,
-    marginBottom: 12,
+    color: C.textWhite,
+    letterSpacing: -0.3,
   },
-
-  // Heatmap
-  heatmapContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+  subtitle: {
+    fontSize: 11,
+    color: C.textDim,
+    marginTop: 2,
+    fontWeight: '500',
   },
-  heatmapTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 12,
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  heatmapRow: {
+  statBox: {
+    alignItems: 'center',
+  },
+  statNum: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: C.textDim,
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 6,
@@ -336,14 +386,22 @@ const styles = StyleSheet.create({
   dayLabel: {
     width: 36,
     textAlign: 'center',
-    fontSize: 11,
-    color: '#aaa',
-    fontWeight: '600',
+    fontSize: 10,
+    color: C.textDim,
+    fontWeight: '700',
   },
-  heatmapCell: {
+  cell: {
     width: 36,
     height: 36,
-    borderRadius: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cellDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   legendRow: {
     flexDirection: 'row',
@@ -356,27 +414,75 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 4,
+    borderWidth: 1,
   },
   legendLabel: {
-    fontSize: 11,
-    color: '#aaa',
+    fontSize: 10,
+    color: C.textDim,
+    fontWeight: '500',
+  },
+});
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+  content: {
+    padding: 16,
+    paddingTop: 12,
+  },
+  loadingState: {
+    flex: 1,
+    backgroundColor: C.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: C.textMid,
+    fontSize: 14,
+    fontWeight: '500',
   },
 
-  // Cards
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+  // Section
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: C.textWhite,
+    letterSpacing: -0.5,
+    marginTop: 24,
+    marginBottom: 4,
   },
-  cardHeader: {
+  sectionSub: {
+    fontSize: 11,
+    color: C.textDim,
+    fontWeight: '500',
+    marginBottom: 14,
+  },
+
+  // Entry card
+  card: {
+    backgroundColor: C.bgCard,
+    borderRadius: 18,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: C.border,
     flexDirection: 'row',
-    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  cardBar: {
+    width: 4,
+  },
+  cardInner: {
+    flex: 1,
+    padding: 14,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   cardHeaderLeft: {
     flexDirection: 'row',
@@ -384,43 +490,58 @@ const styles = StyleSheet.create({
     gap: 10,
     flex: 1,
   },
-  scoreCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  scoreBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scoreText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+  scoreNum: {
+    fontSize: 16,
+    fontWeight: '800',
   },
   cardDate: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: '700',
+    color: C.textWhite,
+    letterSpacing: -0.2,
   },
-  cardStats: {
-    flexDirection: 'row',
-    gap: 8,
-    marginRight: 8,
-  },
-  cardStat: {
-    fontSize: 12,
-    color: '#777',
+  cardSubdate: {
+    fontSize: 11,
+    color: C.textDim,
+    marginTop: 1,
+    fontWeight: '500',
   },
   chevron: {
+    fontSize: 10,
+    color: C.textDim,
+  },
+  metricPills: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  metricPill: {
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  metricPillText: {
     fontSize: 12,
-    color: '#aaa',
+    color: C.textWhite,
+    fontWeight: '600',
   },
-  cardDetail: {
-    marginTop: 12,
+
+  // Expanded detail
+  detail: {
+    marginTop: 10,
   },
-  divider: {
+  detailDivider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
-    marginBottom: 12,
+    backgroundColor: C.border,
+    marginBottom: 10,
   },
   detailRow: {
     flexDirection: 'row',
@@ -428,26 +549,59 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   detailLabel: {
-    fontSize: 13,
-    color: '#aaa',
+    fontSize: 12,
+    color: C.textDim,
     fontWeight: '600',
   },
   detailValue: {
-    fontSize: 13,
-    color: '#555',
+    fontSize: 12,
+    color: C.textMid,
     flex: 1,
     textAlign: 'right',
   },
   notesBox: {
-    backgroundColor: '#F7F7FB',
-    borderRadius: 10,
+    backgroundColor: C.bgCardAlt,
+    borderRadius: 12,
     padding: 12,
-    marginTop: 8,
+    marginTop: 6,
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  notesQuote: {
+    fontSize: 14,
   },
   notesText: {
-    fontSize: 13,
-    color: '#777',
+    fontSize: 12,
+    color: C.textMid,
+    lineHeight: 18,
+    flex: 1,
     fontStyle: 'italic',
-    lineHeight: 20,
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 80,
+    paddingHorizontal: 30,
+  },
+  emptyEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: C.textWhite,
+    marginBottom: 10,
+    letterSpacing: -0.5,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: C.textDim,
+    textAlign: 'center',
+    lineHeight: 22,
+    fontWeight: '500',
   },
 });
