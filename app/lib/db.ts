@@ -11,7 +11,7 @@ async function getUserId(): Promise<string> {
 function userPermissions(userId: string) {
   return [
     Permission.read(Role.user(userId)),
-    Permission.create(Role.user(userId)),
+    Permission.write(Role.user(userId)),
     Permission.update(Role.user(userId)),
     Permission.delete(Role.user(userId)),
   ];
