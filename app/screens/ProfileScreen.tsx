@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,27 @@ import {
   TextInput,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { fetchCurrentUser, signOut } from '../lib/db';
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const C = {
+  bg:        '#0A1628',
+  bgCard:    '#111F35',
+  bgCardAlt: '#0F1A2E',
+  border:    '#1E3352',
+  navy:      '#1E3A5F',
+  teal:      '#4ECDC4',
+  coral:     '#FF6B6B',
+  amber:     '#FFA552',
+  mint:      '#6BCB77',
+  lavender:  '#A78BFA',
+  textWhite: '#F0F8FF',
+  textMid:   '#7A99B8',
+  textDim:   '#3D5A7A',
+};
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,8 +45,22 @@ interface NotificationSettings {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function SectionHeader({ emoji, title, subtitle }: {
+  emoji: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <View style={styles.sectionRow}>
+      <View style={styles.sectionIconBox}>
+        <Text style={styles.sectionIcon}>{emoji}</Text>
+      </View>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+  );
 }
 
 function SettingRow({
@@ -42,7 +76,7 @@ function SettingRow({
     <View style={styles.settingRow}>
       <View style={styles.settingLeft}>
         <Text style={styles.settingLabel}>{label}</Text>
-        {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+        {subtitle && <Text style={styles.settingSub}>{subtitle}</Text>}
       </View>
       {right}
     </View>
@@ -56,27 +90,36 @@ function CustomFieldRow({
   field: CustomField;
   onRemove: () => void;
 }) {
-  const typeLabel = { scale: '0–10 Scale', boolean: 'Yes / No', text: 'Free text' }[field.type];
-  const typeColor = { scale: '#6C63FF', boolean: '#4CAF50', text: '#FFC107' }[field.type];
+  const typeConfig = {
+    scale:   { label: '0–10 Scale', color: C.teal },
+    boolean: { label: 'Yes / No',   color: C.mint },
+    text:    { label: 'Free text',  color: C.amber },
+  }[field.type];
 
   return (
     <View style={styles.customFieldRow}>
       <View style={styles.customFieldLeft}>
         <Text style={styles.customFieldLabel}>{field.label}</Text>
-        <View style={[styles.typeBadge, { backgroundColor: typeColor + '22' }]}>
-          <Text style={[styles.typeBadgeText, { color: typeColor }]}>{typeLabel}</Text>
+        <View style={[styles.typeBadge, { backgroundColor: typeConfig.color + '20', borderColor: typeConfig.color + '50' }]}>
+          <Text style={[styles.typeBadgeText, { color: typeConfig.color }]}>
+            {typeConfig.label}
+          </Text>
         </View>
       </View>
-      <TouchableOpacity onPress={onRemove} style={styles.removeButton}>
-        <Text style={styles.removeButtonText}>✕</Text>
+      <TouchableOpacity onPress={onRemove} style={styles.removeBtn}>
+        <Text style={styles.removeBtnText}>✕</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void }) {
+  const [user, setUser] = useState<{ email: string; $id: string } | null>(null);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
+
   const [notifications, setNotifications] = useState<NotificationSettings>({
     enabled: true,
     time: '8:00 PM',
@@ -95,6 +138,13 @@ export default function ProfileScreen() {
     '7:00 AM', '8:00 AM', '9:00 AM',
     '6:00 PM', '7:00 PM', '8:00 PM', '9:00 PM',
   ];
+
+  useEffect(() => {
+    fetchCurrentUser()
+      .then((u) => setUser({ email: u.email, $id: u.$id }))
+      .catch(() => setUser(null))
+      .finally(() => setLoadingUser(false));
+  }, []);
 
   function handleAddField() {
     const label = newFieldLabel.trim();
@@ -127,27 +177,57 @@ export default function ProfileScreen() {
     );
   }
 
-  function handleSignOut() {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+  async function handleSignOut() {
+    Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => {} },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: async () => {
+          setSigningOut(true);
+          try {
+            await signOut();
+            onSignOut?.();
+          } catch (e: any) {
+            Alert.alert('Error', e.message ?? 'Could not sign out.');
+          } finally {
+            setSigningOut(false);
+          }
+        },
+      },
     ]);
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-
-      {/* Avatar */}
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      {/* Avatar section */}
       <View style={styles.avatarSection}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>👤</Text>
+        <View style={styles.avatarOuter}>
+          <View style={styles.avatarBlob} />
+          <View style={styles.avatar}>
+            <Text style={styles.avatarEmoji}>
+              {user?.email?.[0]?.toUpperCase() ?? '?'}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.userName}>Your Account</Text>
-        <Text style={styles.userEmail}>user@email.com</Text>
+        {loadingUser ? (
+          <ActivityIndicator color={C.teal} style={{ marginTop: 12 }} />
+        ) : (
+          <>
+            <Text style={styles.userName}>{user?.email ?? 'Unknown'}</Text>
+            <View style={styles.userBadge}>
+              <Text style={styles.userBadgeText}>✦ Symptom Journal Member</Text>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Notifications */}
-      <SectionHeader title="Daily Reminder" />
+      <SectionHeader emoji="🔔" title="Daily Reminder" subtitle="Never miss a log" />
       <View style={styles.card}>
         <SettingRow
           label="Reminder enabled"
@@ -158,8 +238,8 @@ export default function ProfileScreen() {
               onValueChange={(v) =>
                 setNotifications((prev) => ({ ...prev, enabled: v }))
               }
-              trackColor={{ false: '#ddd', true: '#6C63FF' }}
-              thumbColor="#fff"
+              trackColor={{ false: C.border, true: C.teal + '80' }}
+              thumbColor={notifications.enabled ? C.teal : C.textDim}
             />
           }
         />
@@ -167,7 +247,7 @@ export default function ProfileScreen() {
         {notifications.enabled && (
           <>
             <View style={styles.divider} />
-            <Text style={styles.timePickerLabel}>Reminder time</Text>
+            <Text style={styles.timeLabel}>Reminder time</Text>
             <View style={styles.timeGrid}>
               {NOTIFICATION_TIMES.map((time) => (
                 <TouchableOpacity
@@ -180,12 +260,10 @@ export default function ProfileScreen() {
                     setNotifications((prev) => ({ ...prev, time }))
                   }
                 >
-                  <Text
-                    style={[
-                      styles.timeChipText,
-                      notifications.time === time && styles.timeChipTextActive,
-                    ]}
-                  >
+                  <Text style={[
+                    styles.timeChipText,
+                    notifications.time === time && styles.timeChipTextActive,
+                  ]}>
                     {time}
                   </Text>
                 </TouchableOpacity>
@@ -196,11 +274,11 @@ export default function ProfileScreen() {
       </View>
 
       {/* Custom Fields */}
-      <SectionHeader title="Custom Tracking Fields" />
-      <Text style={styles.sectionSubtitle}>
-        Add anything you want to track that isn't in the default log.
-      </Text>
-
+      <SectionHeader
+        emoji="⚙️"
+        title="Custom Fields"
+        subtitle="Track anything beyond the defaults"
+      />
       <View style={styles.card}>
         {customFields.length === 0 && (
           <Text style={styles.emptyText}>No custom fields yet.</Text>
@@ -215,7 +293,6 @@ export default function ProfileScreen() {
           </View>
         ))}
 
-        {/* Add field form */}
         {showAddField && (
           <>
             <View style={styles.divider} />
@@ -224,8 +301,8 @@ export default function ProfileScreen() {
               style={styles.addFieldInput}
               value={newFieldLabel}
               onChangeText={setNewFieldLabel}
-              placeholder="e.g. Anxiety, Steps walked, Nausea..."
-              placeholderTextColor="#aaa"
+              placeholder="e.g. Anxiety, Steps walked..."
+              placeholderTextColor={C.textDim}
               autoFocus
             />
             <Text style={styles.addFieldLabel}>Field type</Text>
@@ -239,32 +316,24 @@ export default function ProfileScreen() {
                   ]}
                   onPress={() => setNewFieldType(type)}
                 >
-                  <Text
-                    style={[
-                      styles.typeChipText,
-                      newFieldType === type && styles.typeChipTextActive,
-                    ]}
-                  >
-                    {type === 'scale' ? '0–10 Scale' : type === 'boolean' ? 'Yes / No' : 'Free text'}
+                  <Text style={[
+                    styles.typeChipText,
+                    newFieldType === type && styles.typeChipTextActive,
+                  ]}>
+                    {type === 'scale' ? '0–10' : type === 'boolean' ? 'Yes/No' : 'Text'}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <View style={styles.addFieldButtons}>
+            <View style={styles.addFieldBtns}>
               <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => {
-                  setShowAddField(false);
-                  setNewFieldLabel('');
-                }}
+                style={styles.cancelBtn}
+                onPress={() => { setShowAddField(false); setNewFieldLabel(''); }}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.saveFieldButton}
-                onPress={handleAddField}
-              >
-                <Text style={styles.saveFieldButtonText}>Add field</Text>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddField}>
+                <Text style={styles.saveBtnText}>Add field</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -284,16 +353,22 @@ export default function ProfileScreen() {
       </View>
 
       {/* Data & Privacy */}
-      <SectionHeader title="Data & Privacy" />
+      <SectionHeader emoji="🔒" title="Data & Privacy" />
       <View style={styles.card}>
         <TouchableOpacity
           style={styles.actionRow}
-          onPress={() => Alert.alert('Export', 'PDF export coming soon!')}
+          onPress={() => Alert.alert('Coming soon', 'PDF export will be available in the next update.')}
         >
-          <Text style={styles.actionText}>📄 Export my data</Text>
+          <Text style={styles.actionIcon}>📄</Text>
+          <View style={styles.actionText}>
+            <Text style={styles.actionLabel}>Export my data</Text>
+            <Text style={styles.actionSub}>Download a PDF report for your doctor</Text>
+          </View>
           <Text style={styles.actionChevron}>›</Text>
         </TouchableOpacity>
+
         <View style={styles.divider} />
+
         <TouchableOpacity
           style={styles.actionRow}
           onPress={() =>
@@ -307,20 +382,29 @@ export default function ProfileScreen() {
             )
           }
         >
-          <Text style={[styles.actionText, { color: '#F44336' }]}>
-            🗑️ Delete all my data
-          </Text>
+          <Text style={styles.actionIcon}>🗑️</Text>
+          <View style={styles.actionText}>
+            <Text style={[styles.actionLabel, { color: C.coral }]}>Delete all my data</Text>
+            <Text style={styles.actionSub}>Permanently removes all entries</Text>
+          </View>
           <Text style={styles.actionChevron}>›</Text>
         </TouchableOpacity>
       </View>
 
       {/* Sign out */}
-      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-        <Text style={styles.signOutText}>Sign out</Text>
+      <TouchableOpacity
+        style={styles.signOutBtn}
+        onPress={handleSignOut}
+        disabled={signingOut}
+      >
+        {signingOut ? (
+          <ActivityIndicator color={C.coral} />
+        ) : (
+          <Text style={styles.signOutText}>Sign out</Text>
+        )}
       </TouchableOpacity>
 
       <Text style={styles.version}>Symptom Journal v0.1.0</Text>
-
       <View style={{ height: 40 }} />
     </ScrollView>
   );
@@ -329,69 +413,108 @@ export default function ProfileScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F7F7FB',
-  },
-  content: {
-    padding: 20,
-  },
+  root: { flex: 1, backgroundColor: C.bg },
+  content: { padding: 16, paddingTop: 12 },
 
   // Avatar
   avatarSection: {
     alignItems: 'center',
-    paddingVertical: 24,
+    paddingVertical: 28,
+  },
+  avatarOuter: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 90,
+    height: 90,
+  },
+  avatarBlob: {
+    position: 'absolute',
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: C.teal,
+    opacity: 0.15,
   },
   avatar: {
     width: 72,
     height: 72,
-    borderRadius: 36,
-    backgroundColor: '#EAE9FF',
+    borderRadius: 22,
+    backgroundColor: C.navy,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    borderWidth: 2,
+    borderColor: C.teal + '60',
   },
-  avatarText: {
-    fontSize: 32,
+  avatarEmoji: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: C.teal,
   },
   userName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    color: '#333',
+    color: C.textWhite,
+    marginTop: 14,
+    letterSpacing: -0.3,
   },
-  userEmail: {
-    fontSize: 13,
-    color: '#aaa',
-    marginTop: 2,
+  userBadge: {
+    backgroundColor: C.teal + '15',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: C.teal + '30',
+  },
+  userBadgeText: {
+    fontSize: 11,
+    color: C.teal,
+    fontWeight: '600',
   },
 
   // Section
-  sectionHeader: {
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 28,
+    marginBottom: 12,
+  },
+  sectionIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  sectionIcon: { fontSize: 16 },
+  sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#333',
-    marginTop: 28,
-    marginBottom: 6,
+    color: C.textWhite,
+    letterSpacing: -0.3,
   },
-  sectionSubtitle: {
-    fontSize: 12,
-    color: '#aaa',
-    marginBottom: 10,
+  sectionSub: {
+    fontSize: 11,
+    color: C.textDim,
+    marginTop: 1,
   },
 
   // Card
   card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: C.bgCard,
+    borderRadius: 18,
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: C.border,
   },
   divider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: C.border,
     marginVertical: 12,
   },
 
@@ -401,26 +524,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  settingLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
+  settingLeft: { flex: 1, marginRight: 12 },
   settingLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: C.textWhite,
   },
-  settingSubtitle: {
-    fontSize: 12,
-    color: '#aaa',
+  settingSub: {
+    fontSize: 11,
+    color: C.textDim,
     marginTop: 2,
   },
 
   // Time picker
-  timePickerLabel: {
-    fontSize: 13,
+  timeLabel: {
+    fontSize: 12,
     fontWeight: '600',
-    color: '#555',
+    color: C.textMid,
     marginBottom: 10,
   },
   timeGrid: {
@@ -430,23 +550,24 @@ const styles = StyleSheet.create({
   },
   timeChip: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: C.border,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: '#fff',
+    backgroundColor: C.bgCardAlt,
   },
   timeChipActive: {
-    borderColor: '#6C63FF',
-    backgroundColor: '#6C63FF',
+    borderColor: C.teal,
+    backgroundColor: C.teal + '20',
   },
   timeChipText: {
-    fontSize: 13,
-    color: '#555',
+    fontSize: 12,
+    color: C.textMid,
+    fontWeight: '500',
   },
   timeChipTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+    color: C.teal,
+    fontWeight: '700',
   },
 
   // Custom fields
@@ -464,46 +585,43 @@ const styles = StyleSheet.create({
   customFieldLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: C.textWhite,
   },
   typeBadge: {
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 3,
+    borderWidth: 1,
   },
   typeBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 10,
+    fontWeight: '700',
   },
-  removeButton: {
-    padding: 6,
-  },
-  removeButtonText: {
-    color: '#ccc',
-    fontSize: 14,
-  },
+  removeBtn: { padding: 6 },
+  removeBtnText: { color: C.textDim, fontSize: 13 },
   emptyText: {
     fontSize: 13,
-    color: '#aaa',
+    color: C.textDim,
     textAlign: 'center',
     paddingVertical: 8,
   },
 
   // Add field form
   addFieldLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    color: '#555',
+    color: C.textMid,
     marginBottom: 8,
   },
   addFieldInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,
-    color: '#333',
+    color: C.textWhite,
+    backgroundColor: C.bgCardAlt,
     marginBottom: 14,
   },
   typeRow: {
@@ -514,57 +632,61 @@ const styles = StyleSheet.create({
   typeChip: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: C.border,
     borderRadius: 10,
-    paddingVertical: 8,
+    paddingVertical: 10,
     alignItems: 'center',
+    backgroundColor: C.bgCardAlt,
   },
   typeChipActive: {
-    borderColor: '#6C63FF',
-    backgroundColor: '#EAE9FF',
+    borderColor: C.teal,
+    backgroundColor: C.teal + '15',
   },
   typeChipText: {
     fontSize: 12,
-    color: '#555',
+    color: C.textMid,
+    fontWeight: '500',
   },
   typeChipTextActive: {
-    color: '#6C63FF',
-    fontWeight: '600',
+    color: C.teal,
+    fontWeight: '700',
   },
-  addFieldButtons: {
+  addFieldBtns: {
     flexDirection: 'row',
     gap: 10,
   },
-  cancelButton: {
+  cancelBtn: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    borderColor: C.border,
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  cancelButtonText: {
-    color: '#555',
+  cancelBtnText: {
+    color: C.textMid,
     fontWeight: '600',
+    fontSize: 14,
   },
-  saveFieldButton: {
+  saveBtn: {
     flex: 1,
-    backgroundColor: '#6C63FF',
-    borderRadius: 10,
+    backgroundColor: C.teal,
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
-  saveFieldButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+  saveBtnText: {
+    color: C.bg,
+    fontWeight: '800',
+    fontSize: 14,
   },
   addFieldTrigger: {
     alignItems: 'center',
     paddingVertical: 4,
   },
   addFieldTriggerText: {
-    color: '#6C63FF',
-    fontWeight: '600',
+    color: C.teal,
+    fontWeight: '700',
     fontSize: 14,
   },
 
@@ -572,36 +694,45 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
   },
-  actionText: {
+  actionIcon: { fontSize: 20 },
+  actionText: { flex: 1 },
+  actionLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#333',
+    fontWeight: '600',
+    color: C.textWhite,
+  },
+  actionSub: {
+    fontSize: 11,
+    color: C.textDim,
+    marginTop: 1,
   },
   actionChevron: {
     fontSize: 20,
-    color: '#ccc',
+    color: C.textDim,
   },
 
   // Sign out
-  signOutButton: {
+  signOutBtn: {
     marginTop: 28,
-    borderWidth: 1,
-    borderColor: '#F44336',
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: C.coral + '60',
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    backgroundColor: C.coral + '10',
   },
   signOutText: {
-    color: '#F44336',
-    fontWeight: '700',
+    color: C.coral,
+    fontWeight: '800',
     fontSize: 15,
   },
   version: {
     textAlign: 'center',
-    fontSize: 12,
-    color: '#ccc',
+    fontSize: 11,
+    color: C.textDim,
     marginTop: 20,
+    fontWeight: '500',
   },
 });
