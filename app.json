@@ -14,10 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cody.symptomjournal"
+      "bundleIdentifier": "com.yourname.symptomjournal"
     },
     "android": {
-      "package": "com.cody.symptomjournal",
+      "package": "com.yourname.symptomjournal",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A1628"
@@ -30,6 +30,9 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "anthropicKey": "EXPO_PUBLIC_ANTHROPIC_KEY"
+    }
   }
 }
