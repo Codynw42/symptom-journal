@@ -11,7 +11,36 @@ import {
 import Slider from '@react-native-community/slider';
 import { getStreak, recordLog, StreakData } from '../lib/storage';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const C = {
+  bg:         '#0A1628',
+  bgCard:     '#111F35',
+  bgCardAlt:  '#0F1A2E',
+  border:     '#1E3352',
+  navy:       '#1E3A5F',
+  teal:       '#4ECDC4',
+  coral:      '#FF6B6B',
+  amber:      '#FFA552',
+  mint:       '#6BCB77',
+  lavender:   '#A78BFA',
+  textWhite:  '#F0F8FF',
+  textMid:    '#7A99B8',
+  textDim:    '#3D5A7A',
+  glow:       '#4ECDC420',
+};
+
+// ─── Metric config ────────────────────────────────────────────────────────────
+
+const METRICS = {
+  pain:         { color: C.coral,    bg: '#FF6B6B15', label: 'Pain level',    emoji: '🤕', low: 'None', high: 'Severe' },
+  energy:       { color: C.amber,    bg: '#FFA55215', label: 'Energy level',  emoji: '⚡', low: 'Drained', high: 'Wired' },
+  mood:         { color: C.mint,     bg: '#6BCB7715', label: 'Mood',          emoji: '😊', low: 'Low', high: 'Great' },
+  sleepHrs:     { color: C.teal,     bg: '#4ECDC415', label: 'Hours slept',   emoji: '🕐', low: '0h', high: '12h' },
+  sleepQuality: { color: C.lavender, bg: '#A78BFA15', label: 'Sleep quality', emoji: '✨', low: 'Poor', high: 'Perfect' },
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LogEntry {
   pain: number;
@@ -24,60 +53,131 @@ interface LogEntry {
   foodTags: string[];
 }
 
-// ─── Streak Banner ────────────────────────────────────────────────────────────
+// ─── Hero Banner ──────────────────────────────────────────────────────────────
 
-function StreakBanner({ streak }: { streak: StreakData }) {
-  const { currentStreak, longestStreak } = streak;
+function HeroBanner({ streak }: { streak: StreakData }) {
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? 'Good morning' :
+    hour < 17 ? 'Good afternoon' :
+    'Good evening';
+
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', month: 'long', day: 'numeric',
+  });
+
+  const wellnessMessages = [
+    'Take 60 seconds to check in.',
+    'Your body is worth listening to.',
+    'Patterns emerge from consistency.',
+    'Small data, big insights.',
+    'Another day, another data point.',
+  ];
+  const msg = wellnessMessages[new Date().getDay() % wellnessMessages.length];
 
   return (
-    <View style={streakStyles.container}>
-      <View style={streakStyles.left}>
-        <Text style={streakStyles.fire}>🔥</Text>
-        <View>
-          <Text style={streakStyles.count}>
-            {currentStreak} day{currentStreak !== 1 ? 's' : ''}
-          </Text>
-          <Text style={streakStyles.label}>current streak</Text>
+    <View style={heroStyles.outer}>
+      {/* Decorative background blobs */}
+      <View style={heroStyles.blob1} />
+      <View style={heroStyles.blob2} />
+      <View style={heroStyles.blob3} />
+      <View style={heroStyles.blobRing} />
+
+      {/* Content */}
+      <View style={heroStyles.inner}>
+        <View style={heroStyles.topRow}>
+          <View style={heroStyles.datePill}>
+            <Text style={heroStyles.datePillText}>{dateStr}</Text>
+          </View>
+          {streak.currentStreak > 0 && (
+            <View style={heroStyles.streakPill}>
+              <Text style={heroStyles.streakPillText}>
+                🔥 {streak.currentStreak}
+              </Text>
+            </View>
+          )}
         </View>
-      </View>
-      <View style={streakStyles.divider} />
-      <View style={streakStyles.right}>
-        <Text style={streakStyles.bestCount}>{longestStreak}</Text>
-        <Text style={streakStyles.label}>best streak</Text>
+
+        <Text style={heroStyles.greeting}>{greeting}</Text>
+        <Text style={heroStyles.msg}>{msg}</Text>
+
+        {/* Stats row */}
+        <View style={heroStyles.statsRow}>
+          <View style={heroStyles.stat}>
+            <Text style={[heroStyles.statNum, { color: C.teal }]}>
+              {streak.currentStreak}
+            </Text>
+            <Text style={heroStyles.statLabel}>day streak</Text>
+          </View>
+          <View style={heroStyles.statDivider} />
+          <View style={heroStyles.stat}>
+            <Text style={[heroStyles.statNum, { color: C.amber }]}>
+              {streak.longestStreak}
+            </Text>
+            <Text style={heroStyles.statLabel}>personal best</Text>
+          </View>
+          <View style={heroStyles.statDivider} />
+          <View style={heroStyles.stat}>
+            <Text style={[heroStyles.statNum, { color: C.lavender }]}>7</Text>
+            <Text style={heroStyles.statLabel}>days to insight</Text>
+          </View>
+        </View>
       </View>
     </View>
   );
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Section Header ───────────────────────────────────────────────────────────
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={styles.sectionHeader}>{title}</Text>;
+function Section({ emoji, title, subtitle }: {
+  emoji: string;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <View style={styles.sectionRow}>
+      <View style={styles.sectionIconBox}>
+        <Text style={styles.sectionIcon}>{emoji}</Text>
+      </View>
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
+      </View>
+    </View>
+  );
 }
 
-function SliderRow({
-  label,
+// ─── Metric Slider ────────────────────────────────────────────────────────────
+
+function MetricSlider({
+  metricKey,
   value,
   onChange,
   min = 0,
   max = 10,
-  emoji,
 }: {
-  label: string;
+  metricKey: keyof typeof METRICS;
   value: number;
   onChange: (v: number) => void;
   min?: number;
   max?: number;
-  emoji: string;
 }) {
+  const m = METRICS[metricKey];
+  const pct = ((value - min) / (max - min)) * 100;
+
   return (
-    <View style={styles.sliderRow}>
-      <View style={styles.sliderLabelRow}>
-        <Text style={styles.sliderLabel}>{label}</Text>
-        <Text style={styles.sliderValue}>
-          {emoji} {value}
-        </Text>
+    <View style={[styles.metricCard, { borderLeftColor: m.color }]}>
+      <View style={styles.metricTop}>
+        <View style={[styles.metricPill, { backgroundColor: m.bg }]}>
+          <Text style={styles.metricEmoji}>{m.emoji}</Text>
+          <Text style={[styles.metricLabel, { color: m.color }]}>{m.label}</Text>
+        </View>
+        <View style={[styles.metricBadge, { backgroundColor: m.color }]}>
+          <Text style={styles.metricBadgeNum}>{value}</Text>
+          <Text style={styles.metricBadgeMax}>/{max}</Text>
+        </View>
       </View>
+
       <Slider
         style={styles.slider}
         minimumValue={min}
@@ -85,78 +185,85 @@ function SliderRow({
         step={1}
         value={value}
         onValueChange={onChange}
-        minimumTrackTintColor="#6C63FF"
-        maximumTrackTintColor="#ddd"
-        thumbTintColor="#6C63FF"
+        minimumTrackTintColor={m.color}
+        maximumTrackTintColor={C.border}
+        thumbTintColor={m.color}
       />
-      <View style={styles.sliderEndLabels}>
-        <Text style={styles.sliderEndText}>{min}</Text>
-        <Text style={styles.sliderEndText}>{max}</Text>
+
+      <View style={styles.metricFooter}>
+        <Text style={styles.metricFooterLabel}>{m.low}</Text>
+        <View style={styles.metricTrack}>
+          <View style={[styles.metricFill, {
+            width: `${pct}%`,
+            backgroundColor: m.color + '40',
+          }]} />
+        </View>
+        <Text style={styles.metricFooterLabel}>{m.high}</Text>
       </View>
     </View>
   );
 }
 
+// ─── Tag Input ────────────────────────────────────────────────────────────────
+
 function TagInput({
-  tags,
-  onAdd,
-  onRemove,
-  placeholder,
+  tags, onAdd, onRemove, placeholder, color,
 }: {
   tags: string[];
   onAdd: (tag: string) => void;
   onRemove: (tag: string) => void;
   placeholder: string;
+  color: string;
 }) {
   const [input, setInput] = useState('');
 
   function handleAdd() {
-    const trimmed = input.trim();
-    if (!trimmed || tags.includes(trimmed)) return;
-    onAdd(trimmed);
+    const t = input.trim();
+    if (!t || tags.includes(t)) return;
+    onAdd(t);
     setInput('');
   }
 
   return (
-    <View>
-      <View style={styles.tagInputRow}>
+    <View style={{ gap: 10 }}>
+      <View style={styles.tagRow}>
         <TextInput
-          style={styles.tagTextInput}
+          style={styles.tagInput}
           value={input}
           onChangeText={setInput}
           placeholder={placeholder}
-          placeholderTextColor="#aaa"
+          placeholderTextColor={C.textDim}
           onSubmitEditing={handleAdd}
           returnKeyType="done"
         />
-        <TouchableOpacity style={styles.addButton} onPress={handleAdd}>
-          <Text style={styles.addButtonText}>Add</Text>
+        <TouchableOpacity
+          style={[styles.tagAddBtn, { backgroundColor: color + '25', borderColor: color + '60' }]}
+          onPress={handleAdd}
+        >
+          <Text style={[styles.tagAddText, { color }]}>＋</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.tagList}>
-        {tags.map((tag) => (
-          <TouchableOpacity
-            key={tag}
-            style={styles.tag}
-            onPress={() => onRemove(tag)}
-          >
-            <Text style={styles.tagText}>{tag} ✕</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {tags.length > 0 && (
+        <View style={styles.tagPills}>
+          {tags.map((tag) => (
+            <TouchableOpacity
+              key={tag}
+              style={[styles.tagPill, { borderColor: color + '50', backgroundColor: color + '15' }]}
+              onPress={() => onRemove(tag)}
+            >
+              <Text style={[styles.tagPillText, { color }]}>{tag}</Text>
+              <Text style={[styles.tagX, { color: color + '80' }]}>✕</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function LogScreen() {
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
-
   const [streak, setStreak] = useState<StreakData>({
     currentStreak: 0,
     lastLoggedDate: null,
@@ -164,19 +271,12 @@ export default function LogScreen() {
   });
 
   const [entry, setEntry] = useState<LogEntry>({
-    pain: 0,
-    energy: 5,
-    mood: 5,
-    sleepHrs: 7,
-    sleepQuality: 5,
-    notes: '',
-    medications: [],
-    foodTags: [],
+    pain: 0, energy: 5, mood: 5,
+    sleepHrs: 7, sleepQuality: 5,
+    notes: '', medications: [], foodTags: [],
   });
 
-  useEffect(() => {
-    getStreak().then(setStreak);
-  }, []);
+  useEffect(() => { getStreak().then(setStreak); }, []);
 
   function update<K extends keyof LogEntry>(key: K, value: LogEntry[K]) {
     setEntry((prev) => ({ ...prev, [key]: value }));
@@ -193,282 +293,446 @@ export default function LogScreen() {
   async function handleSubmit() {
     const updated = await recordLog();
     setStreak(updated);
-    console.log('Entry to save:', entry);
-
     if (updated.currentStreak > 1) {
       Alert.alert(
         `${updated.currentStreak} day streak! 🔥`,
         updated.currentStreak === 7
-          ? 'One week logged. Your first AI insights are ready in the Insights tab!'
+          ? 'One week logged. Your first AI insights are ready!'
           : "You're on a roll. Keep it up.",
         [{ text: "Let's go" }]
       );
     } else {
-      Alert.alert(
-        'Entry saved! ✓',
-        'Your symptoms have been logged for today.',
-        [{ text: 'OK' }]
-      );
+      Alert.alert('Logged ✓', 'Entry saved for today.', [{ text: 'OK' }]);
     }
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.root}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
+      <HeroBanner streak={streak} />
 
-      {/* Date */}
-      <Text style={styles.dateText}>{today}</Text>
-
-      {/* Streak */}
-      <StreakBanner streak={streak} />
-
-      {/* How are you feeling */}
-      <SectionHeader title="How are you feeling?" />
-
-      <SliderRow
-        label="Pain"
-        value={entry.pain}
-        onChange={(v) => update('pain', v)}
-        emoji="🤕"
-      />
-      <SliderRow
-        label="Energy"
-        value={entry.energy}
-        onChange={(v) => update('energy', v)}
-        emoji="⚡"
-      />
-      <SliderRow
-        label="Mood"
-        value={entry.mood}
-        onChange={(v) => update('mood', v)}
-        emoji="😊"
-      />
+      {/* Symptoms */}
+      <Section emoji="🩺" title="Symptoms" subtitle="Drag to rate 0 – 10" />
+      <MetricSlider metricKey="pain" value={entry.pain} onChange={(v) => update('pain', v)} />
+      <MetricSlider metricKey="energy" value={entry.energy} onChange={(v) => update('energy', v)} />
+      <MetricSlider metricKey="mood" value={entry.mood} onChange={(v) => update('mood', v)} />
 
       {/* Sleep */}
-      <SectionHeader title="Sleep" />
-
-      <SliderRow
-        label="Hours slept"
-        value={entry.sleepHrs}
-        onChange={(v) => update('sleepHrs', v)}
-        min={0}
-        max={12}
-        emoji="🕐"
-      />
-      <SliderRow
-        label="Sleep quality"
-        value={entry.sleepQuality}
-        onChange={(v) => update('sleepQuality', v)}
-        emoji="😴"
-      />
+      <Section emoji="🌙" title="Sleep" subtitle="How'd you sleep last night?" />
+      <MetricSlider metricKey="sleepHrs" value={entry.sleepHrs} onChange={(v) => update('sleepHrs', v)} min={0} max={12} />
+      <MetricSlider metricKey="sleepQuality" value={entry.sleepQuality} onChange={(v) => update('sleepQuality', v)} />
 
       {/* Medications */}
-      <SectionHeader title="Medications taken today" />
-      <TagInput
-        tags={entry.medications}
-        onAdd={(tag) => addTag('medications', tag)}
-        onRemove={(tag) => removeTag('medications', tag)}
-        placeholder="e.g. Ibuprofen, Vitamin D..."
-      />
+      <Section emoji="💊" title="Medications" subtitle="What did you take today?" />
+      <View style={styles.inputCard}>
+        <TagInput
+          tags={entry.medications}
+          onAdd={(t) => addTag('medications', t)}
+          onRemove={(t) => removeTag('medications', t)}
+          placeholder="Type a medication and tap ＋"
+          color={C.lavender}
+        />
+      </View>
 
       {/* Food */}
-      <SectionHeader title="Food & drink" />
-      <TagInput
-        tags={entry.foodTags}
-        onAdd={(tag) => addTag('foodTags', tag)}
-        onRemove={(tag) => removeTag('foodTags', tag)}
-        placeholder="e.g. coffee, gluten, alcohol..."
-      />
+      <Section emoji="🍽️" title="Food & drink" subtitle="Anything that might matter" />
+      <View style={styles.inputCard}>
+        <TagInput
+          tags={entry.foodTags}
+          onAdd={(t) => addTag('foodTags', t)}
+          onRemove={(t) => removeTag('foodTags', t)}
+          placeholder="e.g. coffee, alcohol, gluten..."
+          color={C.teal}
+        />
+      </View>
 
       {/* Notes */}
-      <SectionHeader title="Anything else?" />
+      <Section emoji="📓" title="Journal" subtitle="Anything on your mind?" />
       <TextInput
-        style={styles.notesInput}
+        style={styles.notes}
         value={entry.notes}
         onChangeText={(v) => update('notes', v)}
-        placeholder="Free notes — symptoms, events, anything worth remembering..."
-        placeholderTextColor="#aaa"
+        placeholder="How are you feeling? What happened today?"
+        placeholderTextColor={C.textDim}
         multiline
-        numberOfLines={4}
+        numberOfLines={5}
+        textAlignVertical="top"
       />
 
-      {/* Submit */}
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitButtonText}>Save today's entry</Text>
+      {/* CTA */}
+      <TouchableOpacity style={styles.cta} onPress={handleSubmit} activeOpacity={0.85}>
+        <Text style={styles.ctaText}>Save today's entry</Text>
+        <Text style={styles.ctaArrow}>→</Text>
       </TouchableOpacity>
 
-      <View style={styles.bottomPadding} />
+      <Text style={styles.ctaNote}>🔒 Private & encrypted</Text>
+      <View style={{ height: 48 }} />
     </ScrollView>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const streakStyles = StyleSheet.create({
-  container: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+const heroStyles = StyleSheet.create({
+  outer: {
+    backgroundColor: C.navy,
+    borderRadius: 24,
+    marginBottom: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+
+  // Decorative blobs
+  blob1: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: C.teal,
+    opacity: 0.08,
+    top: -60,
+    right: -40,
+  },
+  blob2: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: C.lavender,
+    opacity: 0.1,
+    top: 20,
+    right: 60,
+  },
+  blob3: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: C.amber,
+    opacity: 0.07,
+    bottom: 20,
+    right: 20,
+  },
+  blobRing: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 1,
+    borderColor: C.teal,
+    opacity: 0.1,
+    top: -30,
+    right: 10,
+  },
+
+  inner: {
+    padding: 22,
+    paddingBottom: 20,
+  },
+  topRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 16,
   },
-  left: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+  datePill: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
-  fire: {
-    fontSize: 28,
-  },
-  count: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FF7043',
-  },
-  label: {
+  datePillText: {
+    color: 'rgba(255,255,255,0.6)',
     fontSize: 11,
-    color: '#aaa',
-    marginTop: 1,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
-  divider: {
-    width: 1,
-    height: 36,
-    backgroundColor: '#f0f0f0',
-    marginHorizontal: 16,
+  streakPill: {
+    backgroundColor: C.amber + '25',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: C.amber + '50',
   },
-  right: {
+  streakPillText: {
+    color: C.amber,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  greeting: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -1,
+    lineHeight: 36,
+  },
+  msg: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 6,
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 16,
+    padding: 14,
+  },
+  stat: {
+    flex: 1,
     alignItems: 'center',
   },
-  bestCount: {
-    fontSize: 20,
+  statNum: {
+    fontSize: 22,
     fontWeight: '800',
-    color: '#6C63FF',
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
 });
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#F7F7FB',
+    backgroundColor: C.bg,
   },
   content: {
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
-  dateText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#6C63FF',
-    marginBottom: 12,
-  },
-  sectionHeader: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
+
+  // Section
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     marginTop: 28,
     marginBottom: 12,
   },
-  sliderRow: {
-    marginBottom: 16,
+  sectionIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  sliderLabelRow: {
+  sectionIcon: { fontSize: 16 },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: C.textWhite,
+    letterSpacing: -0.3,
+  },
+  sectionSub: {
+    fontSize: 11,
+    color: C.textDim,
+    marginTop: 1,
+    fontWeight: '500',
+  },
+
+  // Metric card
+  metricCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderLeftWidth: 3,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  metricTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  sliderLabel: {
-    fontSize: 14,
-    color: '#555',
+  metricPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  sliderValue: {
-    fontSize: 14,
+  metricEmoji: { fontSize: 13 },
+  metricLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  metricBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    gap: 1,
+  },
+  metricBadgeNum: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  metricBadgeMax: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
     fontWeight: '600',
-    color: '#6C63FF',
   },
   slider: {
     width: '100%',
-    height: 40,
+    height: 36,
   },
-  sliderEndLabels: {
+  metricFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: -8,
+    alignItems: 'center',
+    gap: 8,
+    marginTop: -4,
   },
-  sliderEndText: {
-    fontSize: 11,
-    color: '#aaa',
+  metricFooterLabel: {
+    fontSize: 10,
+    color: C.textDim,
+    fontWeight: '500',
+    width: 42,
   },
-  tagInputRow: {
+  metricTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: C.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  metricFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+
+  // Tag input
+  tagRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 10,
   },
-  tagTextInput: {
+  tagInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
+    backgroundColor: C.bgCardAlt,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 11,
     fontSize: 14,
-    backgroundColor: '#fff',
-    color: '#333',
+    color: C.textWhite,
   },
-  addButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 10,
-    paddingHorizontal: 16,
+  tagAddBtn: {
+    width: 46,
+    borderRadius: 12,
+    alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1.5,
   },
-  addButtonText: {
-    color: '#fff',
-    fontWeight: '600',
-    fontSize: 14,
+  tagAddText: {
+    fontSize: 20,
+    fontWeight: '300',
   },
-  tagList: {
+  tagPills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  tag: {
-    backgroundColor: '#EAE9FF',
+  tagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderWidth: 1.5,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  tagText: {
-    color: '#6C63FF',
+  tagPillText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  notesInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 14,
-    backgroundColor: '#fff',
-    color: '#333',
-    textAlignVertical: 'top',
-    minHeight: 100,
-  },
-  submitButton: {
-    backgroundColor: '#6C63FF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 32,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
+  tagX: {
+    fontSize: 9,
     fontWeight: '700',
   },
-  bottomPadding: {
-    height: 40,
+
+  // Input card
+  inputCard: {
+    backgroundColor: C.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+
+  // Notes
+  notes: {
+    backgroundColor: C.bgCard,
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 14,
+    color: C.textWhite,
+    minHeight: 120,
+    lineHeight: 22,
+    borderWidth: 1.5,
+    borderColor: C.border,
+  },
+
+  // CTA
+  cta: {
+    backgroundColor: C.teal,
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 28,
+    gap: 10,
+    shadowColor: C.teal,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  ctaText: {
+    color: C.bg,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  ctaArrow: {
+    color: C.bg,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  ctaNote: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: C.textDim,
+    marginTop: 12,
+    fontWeight: '500',
   },
 });
