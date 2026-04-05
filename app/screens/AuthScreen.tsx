@@ -88,17 +88,19 @@ export default function AuthScreen({ onLogin }: { onLogin: () => void }) {
   try {
     if (mode === 'signup') {
       await account.create(ID.unique(), email, password);
+      await account.createEmailPasswordSession({ email, password });
+    } else {
+      // Try to delete any existing session before creating a new one
+      try {
+        await account.deleteSession('current');
+      } catch {
+        // No active session, that's fine
+      }
+      await account.createEmailPasswordSession({ email, password });
     }
-    await account.createEmailPasswordSession({
-      email,
-      password,
-    });
     onLogin();
   } catch (error: any) {
-    Alert.alert(
-      'Error',
-      error.message ?? 'Something went wrong. Please try again.'
-    );
+    Alert.alert('Error', error.message ?? 'Something went wrong.');
   } finally {
     setLoading(false);
   }

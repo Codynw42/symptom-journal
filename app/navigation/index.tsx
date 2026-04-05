@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { account } from '../lib/appwrite';
 import { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -139,6 +141,22 @@ function CustomTabBar({ state, navigation }: any) {
 
 export default function Navigation() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    account.get()
+      .then(() => setIsLoggedIn(true))
+      .catch(() => setIsLoggedIn(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0A1628', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color="#4ECDC4" size="large" />
+      </View>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -154,8 +172,8 @@ export default function Navigation() {
         tabBar={(props) => <CustomTabBar {...props} />}
         screenOptions={{
           headerShown: true,
-          headerStyle: { backgroundColor: C.bg },
-          headerTintColor: C.textWhite,
+          headerStyle: { backgroundColor: '#0A1628' },
+          headerTintColor: '#F0F8FF',
           headerTitleStyle: {
             fontWeight: '700',
             fontSize: 17,
@@ -164,26 +182,10 @@ export default function Navigation() {
           headerShadowVisible: false,
         }}
       >
-        <Tab.Screen
-          name="Log"
-          component={LogScreen}
-          options={{ title: 'Daily Log' }}
-        />
-        <Tab.Screen
-          name="History"
-          component={HistoryScreen}
-          options={{ title: 'History' }}
-        />
-        <Tab.Screen
-          name="Insights"
-          component={InsightsScreen}
-          options={{ title: 'AI Insights' }}
-        />
-        <Tab.Screen
-          name="Profile"
-          component={ProfileScreen}
-          options={{ title: 'Profile' }}
-        />
+        <Tab.Screen name="Log" component={LogScreen} options={{ title: 'Daily Log' }} />
+        <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'History' }} />
+        <Tab.Screen name="Insights" component={InsightsScreen} options={{ title: 'AI Insights' }} />
+        <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

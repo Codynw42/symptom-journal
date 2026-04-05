@@ -1,3 +1,4 @@
+import { saveEntry } from '../lib/db';
 import { useEffect, useState } from 'react';
 import {
   View,
@@ -291,8 +292,11 @@ export default function LogScreen() {
   }
 
   async function handleSubmit() {
+  try {
+    await saveEntry(entry);
     const updated = await recordLog();
     setStreak(updated);
+
     if (updated.currentStreak > 1) {
       Alert.alert(
         `${updated.currentStreak} day streak! 🔥`,
@@ -304,7 +308,10 @@ export default function LogScreen() {
     } else {
       Alert.alert('Logged ✓', 'Entry saved for today.', [{ text: 'OK' }]);
     }
+  } catch (error: any) {
+    Alert.alert('Error', error.message ?? 'Could not save entry.');
   }
+}
 
   return (
     <ScrollView
