@@ -4,8 +4,8 @@
   <h1>🌿 Symptom Journal</h1>
   <p><strong>Track every signal.<br>Reveal every pattern.<br>Take control of your health.</strong></p>
   
-  <a href="https://github.com/yourusername/symptom-journal/stargazers"><img src="https://img.shields.io/github/stars/yourusername/symptom-journal?style=for-the-badge&color=00bfff&label=STARS" alt="Stars"></a>
-  <a href="https://github.com/yourusername/symptom-journal/issues"><img src="https://img.shields.io/github/issues/yourusername/symptom-journal?style=for-the-badge&color=00cc99" alt="Issues"></a>
+  <a href="https://github.com/Codynw42/symptom-journal/stargazers"><img src="https://img.shields.io/github/stars/Codynw42/symptom-journal?style=for-the-badge&color=00bfff&label=STARS" alt="Stars"></a>
+  <a href="https://github.com/Codynw42/symptom-journal/issues"><img src="https://img.shields.io/github/issues/Codynw42/symptom-journal?style=for-the-badge&color=00cc99" alt="Issues"></a>
   <a href="https://expo.dev"><img src="https://img.shields.io/badge/Expo-54.0.33-000000?style=for-the-badge&logo=expo&logoColor=white" alt="Expo SDK 54"></a>
   <a href="https://play.google.com/store/apps"><img src="https://img.shields.io/badge/Android-Ready-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android"></a>
   <a href="https://apps.apple.com"><img src="https://img.shields.io/badge/iOS-Ready-000000?style=for-the-badge&logo=apple&logoColor=white" alt="iOS"></a>
@@ -82,7 +82,7 @@ Millions of people track their health every day. Symptom Journal makes it simple
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/symptom-journal.git
+git clone https://github.com/Codynw42/symptom-journal.git
 cd symptom-journal
 
 # Install dependencies
