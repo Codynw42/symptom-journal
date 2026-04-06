@@ -32,7 +32,10 @@
       "expo-secure-store"
     ],
     "extra": {
-      "anthropicKey": "EXPO_PUBLIC_ANTHROPIC_KEY"
+      "anthropicKey": "EXPO_PUBLIC_ANTHROPIC_KEY",
+      "eas": {
+        "projectId": "209c01f5-586b-4718-a355-d89aedb86ec6"
+      }
     }
   }
 }
