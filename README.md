@@ -61,7 +61,7 @@ Millions of people track their health every day. Symptom Journal makes it simple
 - **Navigation**: React Navigation (Native Stack + Bottom Tabs)  
 - **Storage & Sync**:  
   - Local: `@react-native-async-storage/async-storage` + `expo-secure-store`  
-  - Optional: Supabase backend  
+  - Appwrite Backend  
 - **Visualizations**: Victory Native — clean, professional charts  
 - **Utilities**:  
   - Notifications: `expo-notifications`  
@@ -74,7 +74,7 @@ Millions of people track their health every day. Symptom Journal makes it simple
 
 ## 📸 Screenshots
 
-*(Replace these placeholders with your actual app screenshots — they will shine on the App Store and Google Play listings)*
+
 
 ---
 
