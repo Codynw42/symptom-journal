@@ -12,7 +12,8 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import { fetchCurrentUser, signOut } from '../lib/db';
+import { fetchCurrentUser, signOut, fetchEntries } from '../lib/db';
+import { generateAndSharePDF } from '../lib/pdf';
 
 const { width } = Dimensions.get('window');
 
@@ -143,7 +144,6 @@ function ScreenHeader({ email }: { email: string }) {
         opacity: fadeAnim,
         transform: [{ translateY: slideAnim }],
       }]}>
-        {/* Avatar */}
         <View style={headerStyles.avatarRow}>
           <View style={headerStyles.avatarOuter}>
             <View style={headerStyles.avatarRing} />
@@ -227,6 +227,7 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
   const [user, setUser] = useState<{ email: string; $id: string } | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const [notifications, setNotifications] = useState<NotificationSettings>({
     enabled: true,
@@ -285,6 +286,22 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
     );
   }
 
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const entries = await fetchEntries();
+      if (entries.length === 0) {
+        Alert.alert('No data yet', 'Log at least one entry before exporting.');
+        return;
+      }
+      await generateAndSharePDF(entries, 30);
+    } catch (e: any) {
+      Alert.alert('Export failed', e.message ?? 'Could not generate PDF.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleSignOut() {
     Alert.alert('Sign out', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
@@ -338,13 +355,18 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
               {TIMES.map((time) => (
                 <TouchableOpacity
                   key={time}
-                  style={[styles.timeChip, notifications.time === time && styles.timeChipActive]}
+                  style={[
+                    styles.timeChip,
+                    notifications.time === time && styles.timeChipActive,
+                  ]}
                   onPress={() => setNotifications((p) => ({ ...p, time }))}
                 >
                   <Text style={[
                     styles.timeChipText,
                     notifications.time === time && styles.timeChipTextActive,
-                  ]}>{time}</Text>
+                  ]}>
+                    {time}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -386,7 +408,10 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
               {(['scale', 'boolean', 'text'] as const).map((type) => (
                 <TouchableOpacity
                   key={type}
-                  style={[styles.typeChip, newFieldType === type && styles.typeChipActive]}
+                  style={[
+                    styles.typeChip,
+                    newFieldType === type && styles.typeChipActive,
+                  ]}
                   onPress={() => setNewFieldType(type)}
                 >
                   <Text style={[
@@ -428,15 +453,26 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
       {/* Data & Privacy */}
       <Section emoji="🔒" title="DATA & PRIVACY" />
       <View style={styles.card}>
+
+        {/* Export */}
         <TouchableOpacity
           style={styles.actionRow}
-          onPress={() => Alert.alert('Coming soon', 'PDF export will be available in the next update.')}
+          onPress={handleExport}
+          disabled={exporting}
         >
-          <View style={[styles.actionIconBox, { borderColor: C.teal + '40', backgroundColor: C.teal + '10' }]}>
-            <Text style={styles.actionIcon}>📄</Text>
+          <View style={[styles.actionIconBox, {
+            borderColor: C.teal + '40',
+            backgroundColor: C.teal + '10',
+          }]}>
+            {exporting
+              ? <ActivityIndicator size="small" color={C.teal} />
+              : <Text style={styles.actionIcon}>📄</Text>
+            }
           </View>
           <View style={styles.actionText}>
-            <Text style={styles.actionLabel}>Export my data</Text>
+            <Text style={styles.actionLabel}>
+              {exporting ? 'Generating PDF...' : 'Export my data'}
+            </Text>
             <Text style={styles.actionSub}>Download a PDF report for your doctor</Text>
           </View>
           <Text style={styles.actionChevron}>›</Text>
@@ -444,6 +480,7 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
 
         <View style={styles.divider} />
 
+        {/* Delete */}
         <TouchableOpacity
           style={styles.actionRow}
           onPress={() =>
@@ -457,7 +494,10 @@ export default function ProfileScreen({ onSignOut }: { onSignOut?: () => void })
             )
           }
         >
-          <View style={[styles.actionIconBox, { borderColor: C.coral + '40', backgroundColor: C.coral + '10' }]}>
+          <View style={[styles.actionIconBox, {
+            borderColor: C.coral + '40',
+            backgroundColor: C.coral + '10',
+          }]}>
             <Text style={styles.actionIcon}>🗑️</Text>
           </View>
           <View style={styles.actionText}>
@@ -594,7 +634,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   content: { padding: 16, paddingTop: 12 },
 
-  // Section
   sectionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -626,7 +665,6 @@ const styles = StyleSheet.create({
   },
   sectionLine: { flex: 1, height: 1, backgroundColor: C.border },
 
-  // Card
   card: {
     backgroundColor: C.bgCard,
     borderRadius: 18,
@@ -636,7 +674,6 @@ const styles = StyleSheet.create({
   },
   divider: { height: 1, backgroundColor: C.border, marginVertical: 12 },
 
-  // Setting row
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -650,7 +687,6 @@ const styles = StyleSheet.create({
   },
   settingSub: { fontSize: 11, color: C.textDim, marginTop: 2 },
 
-  // Time
   timeLabel: {
     fontSize: 9,
     fontWeight: '800',
@@ -674,7 +710,6 @@ const styles = StyleSheet.create({
   timeChipText: { fontSize: 12, color: C.textMid, fontWeight: '500' },
   timeChipTextActive: { color: C.teal, fontWeight: '800' },
 
-  // Custom fields
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -686,16 +721,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  fieldDot: {
-    width: 6, height: 6,
-    borderRadius: 3,
-    opacity: 0.7,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.textWhite,
-  },
+  fieldDot: { width: 6, height: 6, borderRadius: 3, opacity: 0.7 },
+  fieldLabel: { fontSize: 14, fontWeight: '700', color: C.textWhite },
   fieldBadge: {
     borderRadius: 20,
     paddingHorizontal: 8,
@@ -712,7 +739,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-  // Add field
   addLabel: {
     fontSize: 9,
     fontWeight: '800',
@@ -756,12 +782,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
   },
-  cancelBtnText: {
-    color: C.textMid,
-    fontWeight: '800',
-    fontSize: 11,
-    letterSpacing: 2,
-  },
+  cancelBtnText: { color: C.textMid, fontWeight: '800', fontSize: 11, letterSpacing: 2 },
   saveBtn: {
     flex: 1,
     backgroundColor: C.teal,
@@ -769,21 +790,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
   },
-  saveBtnText: {
-    color: C.bg,
-    fontWeight: '900',
-    fontSize: 11,
-    letterSpacing: 2,
-  },
+  saveBtnText: { color: C.bg, fontWeight: '900', fontSize: 11, letterSpacing: 2 },
   addTrigger: { alignItems: 'center', paddingVertical: 4 },
-  addTriggerText: {
-    color: C.teal,
-    fontWeight: '800',
-    fontSize: 12,
-    letterSpacing: 2,
-  },
+  addTriggerText: { color: C.teal, fontWeight: '800', fontSize: 12, letterSpacing: 2 },
 
-  // Action rows
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -798,15 +808,10 @@ const styles = StyleSheet.create({
   },
   actionIcon: { fontSize: 18 },
   actionText: { flex: 1 },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: C.textWhite,
-  },
+  actionLabel: { fontSize: 14, fontWeight: '700', color: C.textWhite },
   actionSub: { fontSize: 11, color: C.textDim, marginTop: 1 },
   actionChevron: { fontSize: 20, color: C.textDim },
 
-  // Sign out
   signOutBtn: {
     marginTop: 28,
     borderWidth: 1.5,
@@ -816,12 +821,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: C.coral + '08',
   },
-  signOutText: {
-    color: C.coral,
-    fontWeight: '900',
-    fontSize: 13,
-    letterSpacing: 3,
-  },
+  signOutText: { color: C.coral, fontWeight: '900', fontSize: 13, letterSpacing: 3 },
   version: {
     textAlign: 'center',
     fontSize: 9,
