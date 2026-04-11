@@ -56,7 +56,7 @@ Millions of people track their health every day. Symptom Journal makes it simple
 
 ## 🛠️ Tech Stack
 
-- **Framework**: Expo SDK 54 (Managed Workflow) — runs smoothly on iOS, Android, and web  
+- **Framework**: Expo SDK 54 (Managed Workflow) — runs smoothly on Android  
 - **Language**: TypeScript  
 - **Navigation**: React Navigation (Native Stack + Bottom Tabs)  
 - **Storage & Sync**:  
